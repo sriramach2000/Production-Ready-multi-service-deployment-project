@@ -1,0 +1,82 @@
+# templates/worker/app.py — Celery Background Worker (Single-File Application)
+# Config values use orchestrate.py markers and are filled in at generate time.
+# To modify application code: edit THIS file directly, then run: python3 orchestrate.py generate
+# To modify config defaults: edit CONFIG in orchestrate.py, then regenerate.
+#
+# Docs: https://docs.celeryq.dev/en/stable/getting-started/first-steps-with-celery.html
+#
+# This file contains the entire worker application:
+#   1. Celery Configuration  — App instance, broker/backend, serialization
+#   2. Task Definitions      — Background tasks dispatched from the API
+#
+# The worker uses synchronous SQLAlchemy (not async) because Celery is process-based.
+# See worker/requirements.txt — psycopg2-binary instead of asyncpg.
+
+
+import os
+from typing import Any
+
+from celery import Celery
+
+
+# =============================================================================
+# 1. CELERY CONFIGURATION
+# PHASE 4 | Docs: https://docs.celeryq.dev/en/stable/getting-started/first-steps-with-celery.html
+# =============================================================================
+
+# Create the Celery app instance
+#   Docs: https://docs.celeryq.dev/en/stable/getting-started/first-steps-with-celery.html#application
+celery_app = Celery("worker")
+
+# Configure the broker and result backend
+#   Docs: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html
+celery_app.conf.broker_url = os.getenv("CELERY_BROKER_URL", "<< redis.celery_broker_url >>")
+celery_app.conf.result_backend = os.getenv("CELERY_RESULT_BACKEND", "<< redis.celery_result_backend >>")
+
+# Serialization settings
+#   Docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#serialization
+celery_app.conf.task_serializer = "json"
+celery_app.conf.result_serializer = "json"
+celery_app.conf.accept_content = ["json"]
+celery_app.conf.timezone = "UTC"
+
+
+# =============================================================================
+# 2. TASK DEFINITIONS
+# PHASE 4 | Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html
+# =============================================================================
+
+# Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#basics
+# bind=True gives the task access to `self` for retries and state updates
+@celery_app.task(bind=True, name="generate_report")
+def generate_report(self, filters: dict | None = None) -> dict[str, Any]:
+    """
+    Generate a report of tasks matching the given filters.
+    This is a long-running operation dispatched from the API.
+
+    The API calls: generate_report.delay({"status": "done"})
+    The worker picks it up and runs it in the background.
+    """
+    # todos: Create a synchronous SQLAlchemy engine and session
+    #   (The worker uses sync SQLAlchemy, not async — see worker/requirements.txt)
+    #   Connection string: os.getenv("DATABASE_URL") or "<< postgres.sync_url >>"
+    # todos: Query the tasks table with the given filters
+    # todos: Build a report dict (e.g., total tasks, breakdown by status, by priority)
+    # todos: Return the report data
+    # todos: Handle exceptions — use self.retry() for transient failures
+    #   Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#retrying
+    raise NotImplementedError("todos")
+
+
+@celery_app.task(bind=True, name="bulk_status_update")
+def bulk_status_update(self, task_ids: list[int], new_status: str) -> dict[str, Any]:
+    """
+    Update the status of multiple tasks at once.
+    Returns the count of updated tasks.
+    """
+    # todos: Create a synchronous SQLAlchemy session
+    # todos: Query for tasks with IDs in task_ids
+    # todos: Update each task's status to new_status
+    # todos: Commit and return {"updated_count": N}
+    # todos: Handle exceptions with self.retry()
+    raise NotImplementedError("todos")

@@ -1,0 +1,84 @@
+# templates/tests/conftest.py — Shared Test Fixtures
+# To modify: edit THIS file directly, then run: python3 orchestrate.py generate
+#
+# PHASE 9 | Docs: https://fastapi.tiangolo.com/tutorial/testing/
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+
+from app import get_session, app, Base
+
+
+# --- Test database URL ---
+# Option A: In-memory SQLite (fast, simple, less realistic)
+#   TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+# Option B: Separate PostgreSQL (realistic, needs running container)
+#   TEST_DATABASE_URL = "postgresql+asyncpg://test:test@localhost:5432/test_taskdb"
+TEST_DATABASE_URL = ""  # todos: Choose and set your test database URL
+
+
+# todos: Create a test engine and session factory (same pattern as section 3 in api/app.py)
+#   Docs: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html
+test_engine: AsyncEngine | None = None  # todos: create_async_engine(TEST_DATABASE_URL, echo=True)
+test_session_factory: async_sessionmaker[AsyncSession] | None = None  # todos: async_sessionmaker(test_engine, ...)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def setup_database():
+    """Create all tables before each test, drop them after."""
+    # todos: Use Base.metadata.create_all() with test_engine to create tables
+    #   async with test_engine.begin() as conn:
+    #       await conn.run_sync(Base.metadata.create_all)
+    # todos: yield (test runs here)
+    # todos: Drop all tables after test
+    #   async with test_engine.begin() as conn:
+    #       await conn.run_sync(Base.metadata.drop_all)
+    # Docs: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#synopsis-orm
+    pass
+
+
+@pytest_asyncio.fixture
+async def db_session() -> AsyncSession:
+    """Provide a test database session that rolls back after each test."""
+    # todos: Create a session from test_session_factory
+    # todos: yield it
+    # todos: Close it in the finally block
+    # Docs: https://docs.pytest.org/en/stable/how-to/fixtures.html
+    raise NotImplementedError("todos")
+
+
+@pytest_asyncio.fixture
+async def client(db_session: AsyncSession) -> AsyncClient:
+    """
+    Provide an async HTTP client pointing at the test app.
+    Overrides the real DB session with the test session.
+    Docs: https://fastapi.tiangolo.com/advanced/async-tests/
+    """
+
+    # todos: Define an override function that yields db_session
+    async def override_get_session():
+        # todos: yield db_session
+        pass
+
+    # todos: Override the real get_session dependency with the test one
+    #   app.dependency_overrides[get_session] = override_get_session
+
+    # todos: Create and yield an AsyncClient using httpx
+    #   async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    #       yield ac
+
+    # todos: Clean up dependency overrides after test
+    #   app.dependency_overrides.clear()
+    raise NotImplementedError("todos")
+
+
+@pytest_asyncio.fixture
+async def sample_task(client: AsyncClient) -> dict:
+    """Create a sample task for tests that need an existing task."""
+    # todos: POST to /api/v1/tasks with a sample payload
+    #   e.g., {"title": "Test Task", "description": "A test task"}
+    # todos: Assert response status is 201
+    # todos: Return the response JSON (includes id, created_at, etc.)
+    raise NotImplementedError("todos")
