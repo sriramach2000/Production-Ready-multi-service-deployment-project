@@ -36,7 +36,7 @@ Alternatively, open `.drawio` files in VS Code with the "Draw.io Integration" ex
 
 This project is a **production-grade, containerized Task Management REST API** built with FastAPI, PostgreSQL, Redis, and Celery — orchestrated via Docker Compose with Nginx reverse proxying and Prometheus/Grafana monitoring.
 
-The entire project is driven by a single source of truth: `orchestrate.py` (1,237 lines). This one file holds all configuration, generates 29 project files from templates and inline generators, and provides a CLI to manage the Docker stack.
+The entire project is driven by a single source of truth: `orchestrate.py` (~1,250 lines). This one file holds all configuration, generates 29 project files from templates and inline generators, and provides a CLI to manage the Docker stack.
 
 **Key design principles:**
 
@@ -59,7 +59,7 @@ The entire project is driven by a single source of truth: `orchestrate.py` (1,23
 | Reverse Proxy | Nginx 1.27 | Traffic routing, security headers
 | Monitoring | Prometheus + Grafana | Metrics collection + dashboards
 | Migrations | Alembic 1.18.4 | Database schema versioning
-| Testing | pytest 9.0.2 + httpx 0.28.1 | Async API testing
+| Testing | pytest 8.3.5 + httpx 0.28.1 | Async API testing
 | Containerization | Docker + Docker Compose | Multi-service orchestration
 |===
 
@@ -191,7 +191,7 @@ image::end-to-end-pipeline.svg[End-to-End Pipeline, 900, align=center]
 
 == 4. The Orchestration Engine — orchestrate.py
 
-`orchestrate.py` is a 1,237-line Python script organized into 11 numbered sections (1–8, 10–12; section 9 is intentionally skipped). It is the single source of truth for the entire project.
+`orchestrate.py` is a ~1,250-line Python script organized into 11 numbered sections (1–8, 10–12; section 9 is intentionally skipped). It is the single source of truth for the entire project.
 
 === 4.1 Configuration System (Section 1, Lines 31–141)
 
@@ -391,7 +391,7 @@ CONFIG ──> Section 10: Build Tool Generators ──> Makefile, .gitignore,
 
 === 4.4 CLI Interface (Section 12, Lines 1140–1237)
 
-`orchestrate.py` exposes 8 subcommands via `argparse`:
+`orchestrate.py` exposes 9 subcommands via `argparse`:
 
 [cols="2,4,3", options="header"]
 |===
@@ -405,6 +405,7 @@ CONFIG ──> Section 10: Build Tool Generators ──> Makefile, .gitignore,
 | `build` | Generate + build images (no start) | `docker compose build`
 | `status` | Show container status | `docker compose ps`
 | `logs [service]` | Follow logs (all or one service) | `docker compose logs -f [service]`
+| `test` | Generate + rebuild + run pytest inside the API container | `docker compose exec api pytest`
 |===
 
 The `run_docker_compose()` helper auto-detects whether `docker compose` (v2) or `docker-compose` (v1) is available.
@@ -456,7 +457,7 @@ context = {
 
 === 5.2 API Template Anatomy (templates/api/app.py)
 
-The API template is a 600-line single-file FastAPI application organized into 9 sections. Each section only depends on sections above it.
+The API template is a ~660-line single-file FastAPI application organized into 9 sections. Each section only depends on sections above it.
 
 ....
 templates/api/app.py — 9 Sections
@@ -543,7 +544,7 @@ Additionally, `GET /` at the root serves as a health check returning `{"status":
 
 === 5.3 Worker Template (templates/worker/app.py)
 
-An 83-line single-file Celery application with 2 sections.
+A ~120-line single-file Celery application with 2 sections.
 
 **Section 1: Celery Configuration**
 
@@ -705,7 +706,9 @@ image::service-dependencies.svg[Service Dependencies, 800, align=center]
 * **Port:** `3000:3000`
 * **Volume:** `grafana-data:/var/lib/grafana` + provisioning mounted read-only
 * **Env file:** `.env` (GF_SECURITY_ADMIN_USER, GF_SECURITY_ADMIN_PASSWORD)
-* **Auto-provisioned:** Prometheus datasource + starter 4-panel dashboard
+* **Auto-provisioned:** Prometheus datasource (with explicit `uid: prometheus`) + starter 4-panel dashboard
+
+IMPORTANT: The datasource provisioning YAML must include `uid: prometheus` to match the dashboard JSON's datasource references. Without this explicit UID, Grafana auto-generates a random UID and the dashboard panels show "No data".
 
 **Starter dashboard panels:**
 
@@ -1071,14 +1074,16 @@ The application process runs as `appuser`, not `root`. This limits the blast rad
 * Docker Compose loads env vars via `env_file: .env`
 * No hardcoded credentials in application code or Dockerfiles
 
-=== Nginx Security Headers (TODO)
+=== Nginx Security Headers
 
-The following headers are defined but commented out, pending implementation:
+The following security headers are active on all proxied responses (configured in `generate_nginx_default_conf()`):
 
 * `X-Frame-Options: DENY` — prevents clickjacking
 * `X-Content-Type-Options: nosniff` — prevents MIME sniffing
-* `X-XSS-Protection: "1; mode=block"` — XSS filter
+* `X-XSS-Protection: "1; mode=block"` — XSS filter for older browsers
 * `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer information
+
+All headers use the `always` directive to ensure they are sent regardless of response status code.
 
 === CORS Middleware
 
@@ -1087,26 +1092,24 @@ FastAPI's `CORSMiddleware` is configured in Section 9 of the API template to con
 
 == 11. Implementation Roadmap
 
-The project is organized into 9 implementation phases, worked through sequentially. Infrastructure (Dockerfiles, Docker Compose, Nginx, monitoring) is already complete. Application code in `templates/` contains structured TODOs.
+The project is organized into 9 implementation phases, all of which are now **complete**.
 
 [cols="1,3,2,1", options="header"]
 |===
-| Phase | Description | File(s) | TODO Count
+| Phase | Description | File(s) | Status
 
-| 1 | API Core — Config, Models, Schemas, CRUD, Routes, App | `templates/api/app.py` | ~37
-| 2 | Database Session (may be deferred from Phase 1) | `templates/api/app.py` Sec 3 | 3
-| 3 | Redis Caching Layer — cache-aside pattern | `templates/api/app.py` Sec 6 | 6
-| 4 | Celery Background Worker — task definitions | `templates/worker/app.py` | 2
-| 5 | Dockerfiles (already complete) | `api/Dockerfile`, `worker/Dockerfile` | 0
-| 6 | Docker Compose (already complete) | `docker-compose.yml` | 0
-| 7 | Prometheus Metrics — Counter, Histogram, middleware | `templates/api/app.py` Sec 7 | 4
-| 8 | Nginx Security — headers, proxy config, logging, gzip | `orchestrate.py` Sec 6 generators | 5
-| 9 | Testing — fixtures + 15 test cases | `templates/tests/*` | 21
+| 1 | API Core — Config, Models, Schemas, CRUD, Routes, App | `templates/api/app.py` | ✅ Complete
+| 2 | Database Session (done as part of Phase 1) | `templates/api/app.py` Sec 3 | ✅ Complete
+| 3 | Redis Caching Layer — cache-aside pattern | `templates/api/app.py` Sec 6 | ✅ Complete
+| 4 | Celery Background Worker — task definitions | `templates/worker/app.py` | ✅ Complete
+| 5 | Dockerfiles (pre-built by orchestrate.py) | `api/Dockerfile`, `worker/Dockerfile` | ✅ Complete
+| 6 | Docker Compose (pre-built by orchestrate.py) | `docker-compose.yml` | ✅ Complete
+| 7 | Prometheus Metrics — Counter, Histogram, middleware | `templates/api/app.py` Sec 7 | ✅ Complete
+| 8 | Nginx Security — headers, proxy config | `orchestrate.py` Sec 6 generators | ✅ Complete
+| 9 | Testing — fixtures + 15 test cases | `templates/tests/*` | ✅ Complete
 |===
 
-**Total: ~78 implementation items**
-
-**Recommended order:** 1 → 2 → 3 → 4 → 7 → 8 → 9 (Phases 5–6 are already complete)
+**Implementation order followed:** 1 → 2 → 3 → 4 → 7 → 8 → 9 (Phases 5–6 were pre-built)
 
 
 [appendix]
@@ -1114,7 +1117,7 @@ The project is organized into 9 implementation phases, worked through sequential
 
 ....
 .
-├── orchestrate.py                              SINGLE SOURCE OF TRUTH (1,237 lines)
+├── orchestrate.py                              SINGLE SOURCE OF TRUTH (~1,250 lines)
 │
 ├── templates/                                  YOU EDIT THESE (full IDE support)
 │   ├── api/app.py                              FastAPI application (9 sections)
@@ -1176,7 +1179,13 @@ The project is organized into 9 implementation phases, worked through sequential
 ├── .env.example                                ← from generate_env_example()
 ├── .gitignore                                  ← from generate_gitignore()
 ├── .dockerignore                               ← from generate_dockerignore()
-└── PROJECT_GUIDE.md                            Documentation (not generated)
+├── README.md                                   Quick-start documentation
+├── docs/
+│   ├── spec.adoc                               This specification document
+│   ├── spec.pdf                                Rendered PDF
+│   ├── BUILD.sh                                PDF build script
+│   └── diagrams/                               DrawIO architecture diagrams
+└── PROJECT_GUIDE.md                            Step-by-step implementation guide
 ....
 
 
@@ -1190,7 +1199,7 @@ The project is organized into 9 implementation phases, worked through sequential
 | API (via Nginx) | http://localhost | Production entry point
 | API (direct) | http://localhost:8000 | Dev override only
 | Health check | http://localhost/ | Returns `{"status": "ok"}`
-| Task CRUD | http://localhost/api/v1/tasks | REST endpoints
+| Task CRUD | http://localhost/api/v1/tasks/ | REST endpoints (trailing slash required on list endpoint)
 | Prometheus metrics | http://localhost/metrics | Text format
 | Prometheus UI | http://localhost:9090 | Query interface
 | Grafana | http://localhost:3000 | Login: admin / changeme
@@ -1216,7 +1225,7 @@ The project is organized into 9 implementation phases, worked through sequential
 | Celery worker not picking up tasks | Verify `CELERY_BROKER_URL` matches between API and Worker
 | Templates not reflecting changes | Run `python orchestrate.py generate` to re-render
 | Hot reload not working | Ensure `docker-compose.override.yml` exists (dev mode)
-| Grafana shows no data | Wait for Prometheus to scrape (15s interval), check `/metrics` endpoint
+| Grafana shows no data | Verify datasource UID matches (`uid: prometheus` in `datasource.yml` must match dashboard JSON). If UID was changed, delete the Grafana volume and recreate. Also check Prometheus is scraping: `curl http://localhost:9090/api/v1/targets`
 |===
 
 === Useful Debug Commands

@@ -91,7 +91,6 @@ All config lives in `orchestrate.py` Section 1. Key values:
 | DELETE | `/api/v1/tasks/{id}`           | Delete a task                  |
 | POST   | `/api/v1/tasks/report`         | Trigger async report (Celery)  |
 | GET    | `/`                            | Health check                   |
-| GET    | `/health`                      | Health check                   |
 | GET    | `/metrics`                     | Prometheus metrics             |
 
 ## Tech Stack
