@@ -8,6 +8,29 @@
 :sectanchors:
 :sectlinks:
 :nofooter:
+:imagesdir: diagrams
+
+[NOTE]
+====
+*Before rendering to PDF:* Export the DrawIO diagrams to SVG, then generate the PDF.
+
+[source,bash]
+----
+# Step 1: Export all .drawio → .svg (requires draw.io desktop)
+for f in docs/diagrams/*.drawio; do
+  /Applications/draw.io.app/Contents/MacOS/draw.io --export --format svg "$f"
+done
+
+# Step 2: Render to PDF
+gem install asciidoctor-pdf   # one-time install
+asciidoctor-pdf -a imagesdir=diagrams docs/spec.adoc
+
+# Or render to HTML
+asciidoctor docs/spec.adoc
+----
+
+Alternatively, open `.drawio` files in VS Code with the "Draw.io Integration" extension or at https://app.diagrams.net[draw.io].
+====
 
 == 1. Executive Summary
 
@@ -45,6 +68,10 @@ The entire project is driven by a single source of truth: `orchestrate.py` (1,23
 
 The system comprises **7 Docker services** running on a shared bridge network, communicating over internal DNS.
 
+.Architecture Overview — All 7 services, ports, and connections
+image::architecture-overview.svg[Architecture Overview, 900, align=center]
+
+.Architecture Overview (ASCII fallback)
 ....
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                        Docker Network: app-network                      │
@@ -102,6 +129,10 @@ The system comprises **7 Docker services** running on a shared bridge network, c
 
 This is the master flow — from editing source code to a running multi-service stack.
 
+.End-to-End Pipeline — From source editing to running stack
+image::end-to-end-pipeline.svg[End-to-End Pipeline, 900, align=center]
+
+.End-to-End Pipeline (ASCII fallback)
 ....
  DEVELOP                    GENERATE                         BUILD & DEPLOY
 ┌─────────────────┐    ┌───────────────────────┐    ┌────────────────────────────┐
@@ -234,6 +265,10 @@ Change any value here, run `python orchestrate.py generate`, and the new value p
 
 Templates live in `templates/` as real Python files with full IDE support. Config values use custom Jinja2 delimiters.
 
+.Template Rendering — Jinja2 marker substitution flow
+image::template-rendering.svg[Template Rendering, 800, align=center]
+
+.Template Rendering (ASCII fallback)
 ....
 ┌─────────────────────────┐     ┌──────────────────┐     ┌──────────────────────┐
 │  templates/api/app.py   │     │  Jinja2 Engine   │     │   api/app.py         │
@@ -272,6 +307,10 @@ Templates live in `templates/` as real Python files with full IDE support. Confi
 
 Beyond template rendering, `orchestrate.py` has inline generator functions that produce infrastructure files directly from CONFIG values (no Jinja2 templates needed).
 
+.Orchestration Pipeline — CONFIG through generators to 29 files on disk
+image::orchestration-pipeline.svg[Orchestration Pipeline, 900, align=center]
+
+.Orchestration Pipeline (ASCII fallback)
 ....
 orchestrate.py Generator Pipeline
 ──────────────────────────────────
@@ -564,6 +603,10 @@ IMPORTANT: The worker uses **synchronous** SQLAlchemy with `psycopg2-binary` —
 
 Docker Compose ensures services start in the correct order using `depends_on` with `condition: service_healthy`.
 
+.Service Dependency Graph — Startup order with health check gates
+image::service-dependencies.svg[Service Dependencies, 800, align=center]
+
+.Service Dependency Graph (ASCII fallback)
 ....
                      STARTUP ORDER
                      ════════════
@@ -745,6 +788,10 @@ Host :3000 →  grafana :3000      (monitoring)
 
 === 7.1 HTTP Request Lifecycle
 
+.HTTP Request Lifecycle — Client through Nginx and API to data stores
+image::request-lifecycle.svg[Request Lifecycle, 900, align=center]
+
+.HTTP Request Lifecycle (ASCII fallback)
 ....
 ┌────────┐     ┌───────────┐     ┌──────────────────────────────────────────┐
 │ Client │────>│  Nginx    │────>│  FastAPI API                              │
@@ -823,6 +870,10 @@ On UPDATE or DELETE:
 
 === 7.3 Background Task Flow
 
+.Background Task Flow — Celery async job processing via Redis
+image::background-task-flow.svg[Background Task Flow, 900, align=center]
+
+.Background Task Flow (ASCII fallback)
 ....
 ┌────────┐     ┌──────────────┐     ┌───────────┐     ┌──────────────┐     ┌────────────┐
 │ Client │────>│  API         │────>│  Redis    │────>│  Celery      │────>│ PostgreSQL │
@@ -853,6 +904,10 @@ On UPDATE or DELETE:
 
 === 7.4 Monitoring Pipeline
 
+.Monitoring Pipeline — Prometheus scraping and Grafana visualization
+image::monitoring-pipeline.svg[Monitoring Pipeline, 800, align=center]
+
+.Monitoring Pipeline (ASCII fallback)
 ....
 ┌──────────────────────────────────────────────────────────────────────┐
 │                     MONITORING PIPELINE                              │

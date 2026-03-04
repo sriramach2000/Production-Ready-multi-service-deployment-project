@@ -1,0 +1,127 @@
+<mxfile host="app.diagrams.net" modified="2026-03-03" agent="spec-generator" version="24.0.0" type="device">
+  <diagram id="svc-deps" name="Service Dependencies">
+    <mxGraphModel dx="1200" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Service Dependency Graph — Docker Compose Startup Order" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=1;fontColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="260" y="15" width="580" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Layer Labels -->
+        <mxCell id="l0" value="&lt;b&gt;Layer 0&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;No dependencies&lt;br&gt;Start immediately&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=#e3f2fd;rounded=1;fontSize=12;fontColor=#1565c0;" vertex="1" parent="1">
+          <mxGeometry x="30" y="95" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l1" value="&lt;b&gt;Layer 1&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Depends on data stores&lt;br&gt;(service_healthy)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=#e8f5e9;rounded=1;fontSize=12;fontColor=#2e7d32;" vertex="1" parent="1">
+          <mxGeometry x="30" y="310" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="l2" value="&lt;b&gt;Layer 2&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Depends on API&lt;br&gt;(service_healthy)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=#f3e5f5;rounded=1;fontSize=12;fontColor=#6a1b9a;" vertex="1" parent="1">
+          <mxGeometry x="30" y="530" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 0 Services -->
+        <mxCell id="postgres" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;postgres:16-alpine&lt;br&gt;:5432&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="230" y="70" width="160" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-hc" value="&lt;font style=&quot;font-size:9px&quot;&gt;&#x2764; pg_isready -U taskapp&lt;br&gt;interval: 10s | retries: 5&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e3f2fd;strokeColor=#90caf9;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="220" y="168" width="180" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="redis" value="&lt;b&gt;Redis&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;redis:7-alpine&lt;br&gt;:6379&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="480" y="70" width="160" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="rd-hc" value="&lt;font style=&quot;font-size:9px&quot;&gt;&#x2764; redis-cli ping&lt;br&gt;interval: 10s | retries: 5&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fce4ec;strokeColor=#ef9a9a;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="470" y="168" width="180" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="prometheus" value="&lt;b&gt;Prometheus&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;:9090&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="85" width="140" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="grafana" value="&lt;b&gt;Grafana&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;:3000&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e5f5;strokeColor=#ab47bc;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="940" y="85" width="140" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="independent" value="&lt;font style=&quot;font-size:9px;font-style:italic&quot;&gt;Independent — no depends_on&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontColor=#888;" vertex="1" parent="1">
+          <mxGeometry x="795" y="150" width="170" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 1 Services -->
+        <mxCell id="api" value="&lt;b&gt;FastAPI API&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Python 3.12-slim&lt;br&gt;:8000&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="290" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="api-hc" value="&lt;font style=&quot;font-size:9px&quot;&gt;&#x2764; HTTP GET localhost:8000/&lt;br&gt;interval: 30s | retries: 3&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#a5d6a7;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="260" y="370" width="190" height="35" as="geometry" />
+        </mxCell>
+
+        <mxCell id="worker" value="&lt;b&gt;Celery Worker&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Python 3.12-slim&lt;br&gt;(no exposed port)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="530" y="290" width="170" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="wk-hc" value="&lt;font style=&quot;font-size:9px&quot;&gt;&#x2764; celery -A app inspect ping&lt;br&gt;interval: 30s | retries: 3&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#ffe082;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="520" y="370" width="190" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Layer 2 Services -->
+        <mxCell id="nginx" value="&lt;b&gt;Nginx&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;nginx:1.27-alpine&lt;br&gt;:80 (public)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="510" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Dependency Arrows -->
+        <mxCell id="d1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6c8ebf;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" source="postgres" target="api" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="d1-l" value="&lt;font style=&quot;font-size:9px;color:#6c8ebf&quot;&gt;&lt;b&gt;service_healthy&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fillColor=#fff;rounded=1;" vertex="1" connectable="0" parent="d1">
+          <mxGeometry x="0.1" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="d2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" source="redis" target="api" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="d2-l" value="&lt;font style=&quot;font-size:9px;color:#b85450&quot;&gt;&lt;b&gt;service_healthy&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fillColor=#fff;rounded=1;" vertex="1" connectable="0" parent="d2">
+          <mxGeometry x="0.1" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="d3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#6c8ebf;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" source="postgres" target="worker" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" source="redis" target="worker" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#82b366;strokeWidth=2;endArrow=blockThin;endFill=1;" edge="1" source="api" target="nginx" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="d5-l" value="&lt;font style=&quot;font-size:9px;color:#82b366&quot;&gt;&lt;b&gt;service_healthy&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fillColor=#fff;rounded=1;" vertex="1" connectable="0" parent="d5">
+          <mxGeometry x="0.1" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- Monitoring arrow -->
+        <mxCell id="m1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d79b00;strokeWidth=1;endArrow=blockThin;endFill=1;dashed=1;" edge="1" source="prometheus" target="api" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="810" y="290" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m1-l" value="&lt;font style=&quot;font-size:9px&quot;&gt;scrape /metrics&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fillColor=#ffe6cc;rounded=1;" vertex="1" connectable="0" parent="m1">
+          <mxGeometry x="0.3" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <mxCell id="m2" style="rounded=1;html=1;strokeColor=#ab47bc;strokeWidth=1;endArrow=blockThin;endFill=1;dashed=1;" edge="1" source="grafana" target="prometheus" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="m2-l" value="&lt;font style=&quot;font-size:9px&quot;&gt;PromQL&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fillColor=#f3e5f5;rounded=1;" vertex="1" connectable="0" parent="m2">
+          <mxGeometry x="-0.1" relative="1" as="geometry"><mxPoint as="offset" /></mxGeometry>
+        </mxCell>
+
+        <!-- Restart policy note -->
+        <mxCell id="restart-note" value="&lt;font style=&quot;font-size:10px&quot;&gt;&lt;b&gt;All services:&lt;/b&gt; restart: unless-stopped&lt;br&gt;&lt;b&gt;All services:&lt;/b&gt; network: app-network (bridge)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#bbb;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="770" y="510" width="280" height="50" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
