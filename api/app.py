@@ -31,7 +31,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, AsyncGenerator, Optional, Sequence
+from typing import Any, AsyncGenerator, Optional
 
 import redis.asyncio as aioredis
 from celery import Celery
@@ -43,7 +43,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import String, Text, DateTime, Enum as SAEnum, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+from celery import Celery
 
 # =============================================================================
 # 1. CONFIGURATION
@@ -56,25 +58,25 @@ class Settings(BaseSettings):
     Docs: https://fastapi.tiangolo.com/advanced/settings/
     """
 
-    # todos: Configure model_config to read from a .env file
     #   Use SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     #   Docs: https://docs.pydantic.dev/latest/concepts/pydantic_settings/#dotenv-env-support
-    model_config = SettingsConfigDict(
-        # todos: fill in env_file and encoding
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # --- Database ---
-    # todos: In Docker Compose, the DB host will be "postgres" (the service name)
     POSTGRES_USER: str = "taskapp"
     POSTGRES_PASSWORD: str = "changeme_use_a_strong_password"
     POSTGRES_DB: str = "taskdb"
     POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
 
-    # todos: Define a property or computed field that assembles the full DATABASE_URL
+
+    #
     #   Format: "postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
     #   For reference, the current config produces: postgresql+asyncpg://taskapp:changeme_use_a_strong_password@postgres:5432/taskdb
     #   Docs: https://docs.pydantic.dev/latest/concepts/validators/
+    @property
+    def DATABASE_URL(self) -> str:
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # --- Redis ---
     REDIS_URL: str = "redis://redis:6379/0"
@@ -89,7 +91,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
 
-# todos: @lru_cache ensures settings are only loaded once
+# @lru_cache ensures settings are only loaded once
 #   Docs: https://fastapi.tiangolo.com/advanced/settings/#creating-the-settings-only-once-with-lru_cache
 @lru_cache
 def get_settings() -> Settings:
@@ -129,42 +131,39 @@ class Task(Base):
 
     __tablename__ = "tasks"
 
-    # todos: Define each column using Mapped[] and mapped_column()
-    #   Docs: https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html#using-mapped-column
+    # Docs: https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html#using-mapped-column
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
-        # todos: autoincrement
+        autoincrement=True,
     )
 
     title: Mapped[str] = mapped_column(
-        # todos: String(255), nullable=False
+        String(255) , nullable=False,
     )
 
     description: Mapped[str | None] = mapped_column(
-        # todos: Text, nullable=True (optional field)
+        Text, nullable=True
     )
 
     status: Mapped[TaskStatus] = mapped_column(
-        # todos: SAEnum(TaskStatus), set default to TaskStatus.todos
+        SAEnum(TaskStatus) , default=TaskStatus.todos,
     )
 
     priority: Mapped[TaskPriority] = mapped_column(
-        # todos: SAEnum(TaskPriority), set default to TaskPriority.MEDIUM
+        SAEnum(TaskPriority) , default=TaskPriority.MEDIUM
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        # todos: DateTime, server_default=func.now()
-        #   Docs: https://docs.sqlalchemy.org/en/20/core/defaults.html#server-invoked-ddl-explicit-default-expressions
+        DateTime, server_default=func.now(),
     )
 
     updated_at: Mapped[datetime | None] = mapped_column(
-        # todos: DateTime, onupdate=func.now(), nullable=True
+        DateTime, onupdate=func.now() , nullable=True,
     )
 
     def __repr__(self) -> str:
-        # todos: Return a readable string like "Task(id=1, title='My Task', status='todos')"
-        raise NotImplementedError("todos")
+        return f"Task(id={self.id}, title='{self.title}', status='{self.status.value}')"
 
 
 # =============================================================================
@@ -172,16 +171,16 @@ class Task(Base):
 # PHASE 2 | Docs: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html
 # =============================================================================
 
-# todos: Create the async engine
-#   Use: create_async_engine(settings.DATABASE_URL, echo=False, pool_pre_ping=True)
-#   Docs: https://docs.sqlalchemy.org/en/20/core/engines.html
-engine: AsyncEngine | None = None  # todos: replace with create_async_engine(...)
 
-# todos: Create the async session factory
-#   Use: async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-#   expire_on_commit=False prevents lazy-load issues after commit
+#   Docs: https://docs.sqlalchemy.org/en/20/core/engines.html
+engine: AsyncEngine = create_async_engine(
+    settings.DATABASE_URL, echo=False, pool_pre_ping=True 
+)  
+
 #   Docs: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-asyncsession-with-a-sessionmaker
-async_session_factory: async_sessionmaker[AsyncSession] | None = None  # todos: replace with async_sessionmaker(...)
+async_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
@@ -190,13 +189,13 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     Usage in routes: session: AsyncSession = Depends(get_session)
     Docs: https://fastapi.tiangolo.com/tutorial/dependencies/
     """
-    # todos: Create a session using async_session_factory()
-    # todos: yield the session inside a try/finally block
-    # todos: In the finally block, close the session
+
     # Pattern:
     #   async with async_session_factory() as session:
     #       yield session
-    raise NotImplementedError("todos")
+    
+    async with async_session_factory() as session:
+        yield session
 
 
 # =============================================================================
@@ -206,17 +205,19 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 class TaskBase(BaseModel):
     title: str = Field(
-        # todos: Add validation — min_length=1, max_length=255
         #   Docs: https://docs.pydantic.dev/latest/concepts/fields/
+        min_length=1, max_length=255,
+    
     )
     description: Optional[str] = Field(
-        # todos: default=None
+        default=None
     )
     status: TaskStatus = Field(
-        # todos: default=TaskStatus.todos
+        default=TaskStatus.todos
     )
+
     priority: TaskPriority = Field(
-        # todos: default=TaskPriority.MEDIUM
+        default=TaskPriority.MEDIUM
     )
 
 
@@ -231,16 +232,16 @@ class TaskCreate(TaskBase):
 class TaskUpdate(BaseModel):
     """All fields optional — partial update pattern."""
     title: Optional[str] = Field(
-        # todos: default=None, min_length=1, max_length=255
+        default=None, min_length=1 , max_length=255
     )
     description: Optional[str] = Field(
-        # todos: default=None
+        default=None
     )
     status: Optional[TaskStatus] = Field(
-        # todos: default=None
+        default=None
     )
     priority: Optional[TaskPriority] = Field(
-        # todos: default=None
+        default=None
     )
 
 
@@ -248,11 +249,9 @@ class TaskUpdate(BaseModel):
 # Docs: https://fastapi.tiangolo.com/tutorial/response-model/
 class TaskResponse(TaskBase):
     """Includes database-generated fields: id, created_at, updated_at."""
-
-    # todos: Enable ORM mode so Pydantic can read SQLAlchemy model attributes
     #   Docs: https://docs.pydantic.dev/latest/concepts/models/#arbitrary-class-instances
     model_config = ConfigDict(
-        # todos: from_attributes=True
+        from_attributes=True,
     )
 
     id: int
@@ -264,7 +263,6 @@ class TaskResponse(TaskBase):
 class TaskListResponse(BaseModel):
     tasks: list[TaskResponse]
     total: int
-    # todos: Add skip/limit fields if you want pagination metadata
 
 
 # =============================================================================
@@ -274,25 +272,19 @@ class TaskListResponse(BaseModel):
 
 async def create_task(session: AsyncSession, task_data: TaskCreate) -> Task:
     """Insert a new task into the database and return it."""
-    # todos: Create a Task instance from task_data
-    #   Hint: Task(**task_data.model_dump())
-    # todos: session.add(task)
-    # todos: await session.commit()
-    # todos: await session.refresh(task)  — to get DB-generated fields (id, created_at)
-    # todos: return task
+    
     # Docs: https://docs.sqlalchemy.org/en/20/orm/session_basics.html#adding-new-or-existing-items
-    raise NotImplementedError("todos")
-
+    task = Task(**task_data.model_dump())
+    session.add(task)
+    await session.commit()
+    await session.refresh(task)
+    return task
 
 async def get_task(session: AsyncSession, task_id: int) -> Optional[Task]:
     """Fetch a single task by ID. Returns None if not found."""
-    # todos: Build a select() statement filtering by Task.id == task_id
-    # todos: Execute with session.execute()
-    # todos: Use .scalar_one_or_none() to get the result
-    # todos: return the task or None
     # Docs: https://docs.sqlalchemy.org/en/20/orm/queryguide/select.html
-    raise NotImplementedError("todos")
-
+    result = await session.execute(select(Task).where(Task.id == task_id))
+    return result.scalar_one_or_none()
 
 async def list_tasks(
     session: AsyncSession,
@@ -300,15 +292,20 @@ async def list_tasks(
     priority_filter: Optional[TaskPriority] = None,
     skip: int = 0,
     limit: int = 20,
-) -> Sequence[Task]:
+) -> list[Task]:
+
     """Fetch tasks with optional filtering and pagination."""
-    # todos: Start with select(Task)
-    # todos: If status_filter is not None, add .where(Task.status == status_filter)
-    # todos: If priority_filter is not None, add .where(Task.priority == priority_filter)
-    # todos: Add .offset(skip).limit(limit)
-    # todos: Add .order_by(Task.created_at.desc()) for newest first
-    # todos: Execute and return .scalars().all()
-    raise NotImplementedError("todos")
+    query= select(Task)
+
+    if status_filter is not None:
+        query = query.where(Task.status == status_filter)
+
+    if priority_filter is not None:
+        query = query.where(Task.priority == priority_filter)
+
+    query = query.order_by(Task.created_at.desc()).offset(skip).limit(limit)
+    result = await session.execute(query)
+    return list(result.scalars().all())
 
 
 async def count_tasks(
@@ -316,11 +313,18 @@ async def count_tasks(
     status_filter: Optional[TaskStatus] = None,
     priority_filter: Optional[TaskPriority] = None,
 ) -> int:
+    
     """Count tasks matching filters (for pagination metadata)."""
-    # todos: Use select(func.count()).select_from(Task)
-    # todos: Apply same filters as list_tasks
-    # todos: Execute and return .scalar_one()
-    raise NotImplementedError("todos")
+    query = select(func.count()).select_from(Task)
+
+    if status_filter is not None:
+        query = query.where(Task.status == status_filter)
+
+    if priority_filter is not None:
+        query = query.where(Task.priority == priority_filter)
+    
+    result = await session.execute(query)
+    return result.scalar_one()
 
 
 async def update_task(
@@ -329,25 +333,32 @@ async def update_task(
     task_data: TaskUpdate,
 ) -> Optional[Task]:
     """Update a task with partial data. Returns None if not found."""
-    # todos: Fetch the task by ID (reuse get_task or inline the query)
-    # todos: If not found, return None
-    # todos: Loop through task_data.model_dump(exclude_unset=True)
-    #   and setattr() each field on the task
-    # todos: await session.commit()
-    # todos: await session.refresh(task)
-    # todos: return the updated task
-    raise NotImplementedError("todos")
+    task = await get_task(session, task_id)
+
+    if task is None:
+        return None 
+    
+    for field, value in task_data.model_dump(exclude_unset=True).items():
+        setattr(task, field, value)
+    
+    await session.commit()
+    await session.refresh(task)
+    
+    return task
 
 
 async def delete_task(session: AsyncSession, task_id: int) -> bool:
     """Delete a task by ID. Returns True if deleted, False if not found."""
-    # todos: Fetch the task by ID
-    # todos: If not found, return False
-    # todos: await session.delete(task)
-    # todos: await session.commit()
-    # todos: return True
-    raise NotImplementedError("todos")
 
+    task = await get_task(session,task_id)
+    
+    if task is None:
+        return False
+    
+    await session.delete(task)
+    await session.commit()
+
+    return True 
 
 # =============================================================================
 # 6. CACHE (Redis Caching Layer)
@@ -355,7 +366,7 @@ async def delete_task(session: AsyncSession, task_id: int) -> bool:
 # =============================================================================
 
 CACHE_PREFIX = "task"
-DEFAULT_TTL = 300  # 5 minutes in seconds
+DEFAULT_TTL = 300  #
 
 
 class CacheService:
@@ -366,49 +377,61 @@ class CacheService:
 
     async def connect(self) -> None:
         """Initialize the Redis connection. Call during app startup (lifespan)."""
-        # todos: Create a Redis connection using aioredis.from_url()
         #   Pass: settings.REDIS_URL, encoding="utf-8", decode_responses=True
         #   Docs: https://redis.readthedocs.io/en/stable/connections.html
-        pass
+
+        self.redis = await aioredis.from_url(
+            settings.REDIS_URL, encoding="utf-8", decode_responses = True 
+        
+        )
 
     async def close(self) -> None:
         """Close the Redis connection. Call during app shutdown (lifespan)."""
-        # todos: Close self.redis if it exists
         #   Use: await self.redis.close()
-        pass
+        if self.redis:
+            await self.redis.close()
+                
 
     def _make_key(self, task_id: int) -> str:
         """Build a cache key like 'task:123'."""
-        # todos: Return f"{CACHE_PREFIX}:{task_id}"
-        raise NotImplementedError("todos")
+
+        return f"{CACHE_PREFIX}:{task_id}"
 
     async def get_cached_task(self, task_id: int) -> Optional[dict]:
         """
         Try to get a task from Redis cache.
         Returns the task as a dict on cache hit, None on cache miss.
         """
-        # todos: Build the key with self._make_key(task_id)
-        # todos: Call await self.redis.get(key)
-        # todos: If result is None, return None (cache miss)
-        # todos: Deserialize the JSON string: json.loads(result)
-        # todos: Return the deserialized dict
         # Docs: https://redis.io/docs/latest/commands/get/
-        pass
+
+        key = self._make_key(task_id)
+        if not self.redis:
+            return None 
+        
+        result = await self.redis.get(key)
+        if result is None:
+            return None 
+        
+
+        return json.loads(result)
+    
+
 
     async def set_cached_task(self, task_id: int, task_data: dict, ttl: int = DEFAULT_TTL) -> None:
-        """Store a task in Redis cache with a TTL (time-to-live)."""
-        # todos: Build the key with self._make_key(task_id)
-        # todos: Serialize task_data to JSON: json.dumps(task_data)
-        # todos: Call await self.redis.setex(key, ttl, json_string)
         # Docs: https://redis.io/docs/latest/commands/setex/
-        pass
-
+        key = self._make_key(task_id)
+        json_string = json.dumps(task_data, default=str)
+        if not self.redis:
+            return None 
+        await self.redis.setex(key, ttl, json_string)
+    
     async def invalidate_task_cache(self, task_id: int) -> None:
         """Remove a task from Redis cache. Call after update or delete."""
-        # todos: Build the key with self._make_key(task_id)
-        # todos: Call await self.redis.delete(key)
         # Docs: https://redis.io/docs/latest/commands/del/
-        pass
+        key = self._make_key(task_id)
+        if not self.redis:
+            return None
+        await self.redis.delete(key)
 
 
 cache_service = CacheService()
@@ -419,20 +442,21 @@ cache_service = CacheService()
 # PHASE 7 | Docs: https://prometheus.github.io/client_python/
 # =============================================================================
 
-# todos: Create a Counter for total HTTP requests
-#   Name: "http_requests_total"
-#   Description: "Total number of HTTP requests"
-#   Labels: ["method", "endpoint", "status_code"]
 #   Docs: https://prometheus.github.io/client_python/instrumenting/counter/
-REQUEST_COUNT: Counter | None = None  # todos: Counter(...)
 
-# todos: Create a Histogram for request duration
-#   Name: "http_request_duration_seconds"
-#   Description: "HTTP request duration in seconds"
-#   Labels: ["method", "endpoint"]
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+
+
 #   Docs: https://prometheus.github.io/client_python/instrumenting/histogram/
-REQUEST_DURATION: Histogram | None = None  # todos: Histogram(...)
-
+REQUEST_DURATION = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "endpoint"],
+)
 
 def setup_metrics(fastapi_app: FastAPI) -> None:
     """
@@ -442,21 +466,33 @@ def setup_metrics(fastapi_app: FastAPI) -> None:
 
     @fastapi_app.middleware("http")
     async def prometheus_middleware(request: Request, call_next) -> Response:
-        """Record request count and duration for every HTTP request."""
-        # todos: Record the start time using time.time()
-        # todos: Call response = await call_next(request)
-        # todos: Calculate duration = time.time() - start_time
-        # todos: Increment REQUEST_COUNT with labels (method, path, status_code)
-        # todos: Observe duration in REQUEST_DURATION with labels (method, path)
-        # todos: Return the response
-        # Docs: https://fastapi.tiangolo.com/tutorial/middleware/
-        raise NotImplementedError("todos")
 
-    # todos: Mount the Prometheus metrics ASGI app at /metrics
-    #   Use: metrics_app = make_asgi_app()
-    #   Then: fastapi_app.mount("/metrics", metrics_app)
+        """Record request count and duration for every HTTP request."""
+
+        # Docs: https://fastapi.tiangolo.com/tutorial/middleware/
+        
+        start_time = time.time()
+        response = await call_next(request)
+        duration = time.time() - start_time
+
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=request.url.path,
+            status_code=response.status_code,
+        ).inc()
+
+        REQUEST_DURATION.labels(
+            method=request.method,
+            endpoint=request.url.path,
+        ).observe(duration)
+
+        return response
+
+
     #   Docs: https://prometheus.github.io/client_python/exporting/http/
-    pass
+    metrics_app = make_asgi_app()
+    fastapi_app.mount("/metrics", metrics_app)
+
 
 
 # =============================================================================
@@ -470,31 +506,37 @@ router = APIRouter()
 # ---- CREATE ----
 # Docs: https://fastapi.tiangolo.com/tutorial/body/
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=TaskResponse)
+
 async def create_task_endpoint(
+
     task_data: TaskCreate,
     session: AsyncSession = Depends(get_session),
-):
-    """Create a new task."""
-    # todos: Call create_task() with session and task_data
-    # todos: Return the created task
-    raise NotImplementedError("todos")
 
+):
+    
+    """Create a new task."""
+    task = await create_task(session, task_data)
+
+    return task 
 
 # ---- LIST ----
 # Docs: https://fastapi.tiangolo.com/tutorial/query-params/
 @router.get("/", response_model=TaskListResponse)
 async def list_tasks_endpoint(
+
     status_filter: Optional[TaskStatus] = None,
     priority_filter: Optional[TaskPriority] = None,
     skip: int = 0,
     limit: int = 20,
     session: AsyncSession = Depends(get_session),
+
 ):
     """List tasks with optional filtering and pagination."""
-    # todos: Call list_tasks() with filters and pagination params
-    # todos: Call count_tasks() to get the total count
-    # todos: Return TaskListResponse with tasks list and total count
-    raise NotImplementedError("todos")
+
+    tasks = await list_tasks(session, status_filter, priority_filter, skip, limit)
+    total = await count_tasks(session, status_filter, priority_filter)
+
+    return TaskListResponse(tasks=[TaskResponse.model_validate(t) for t in tasks], total=total)
 
 
 # ---- GET SINGLE ----
@@ -505,15 +547,24 @@ async def get_task_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Get a single task by ID. Uses Redis cache (cache-aside pattern)."""
-    # todos: Check Redis cache first via cache_service.get_cached_task(task_id)
-    # todos: On cache hit — return the cached data
-    # todos: On cache miss — query DB via get_task()
-    # todos: If not found in DB — raise HTTPException(status_code=404)
-    # todos: Store result in cache via cache_service.set_cached_task()
-    # todos: Return the task
-    raise NotImplementedError("todos")
+    # 1. Check cache first
+    cached = await cache_service.get_cached_task(task_id)
+    if cached is not None:
+        return cached
+
+    # 2. Cache miss — hit DB
+    task = await get_task(session, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 3. Store in cache for next time
+    task_response = TaskResponse.model_validate(task)
+    await cache_service.set_cached_task(task_id, task_response.model_dump(mode="json"))
+
+    return task
 
 
+    
 # ---- UPDATE ----
 # Docs: https://fastapi.tiangolo.com/tutorial/body-updates/
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -523,11 +574,11 @@ async def update_task_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Partially update a task."""
-    # todos: Call update_task() with session, task_id, task_data
-    # todos: If task not found — raise HTTPException(status_code=404)
-    # todos: Invalidate Redis cache via cache_service.invalidate_task_cache(task_id)
-    # todos: Return the updated task
-    raise NotImplementedError("todos")
+    task = await update_task(session, task_id, task_data)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await cache_service.invalidate_task_cache(task_id)
+    return task
 
 
 # ---- DELETE ----
@@ -537,11 +588,11 @@ async def delete_task_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Delete a task by ID."""
-    # todos: Call delete_task() with session and task_id
-    # todos: If task not found — raise HTTPException(status_code=404)
-    # todos: Invalidate Redis cache via cache_service.invalidate_task_cache(task_id)
-    # todos: Return None (204 No Content has no body)
-    raise NotImplementedError("todos")
+    deleted = await delete_task(session, task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await cache_service.invalidate_task_cache(task_id)
+    return None
 
 
 # ---- TRIGGER ASYNC REPORT ----
@@ -549,10 +600,12 @@ async def delete_task_endpoint(
 @router.post("/report", status_code=status.HTTP_202_ACCEPTED)
 async def generate_report_endpoint():
     """Trigger an async report generation via Celery. Returns 202 Accepted."""
-    # todos: Import the Celery task from the worker (worker/app.py)
-    # todos: Call task.delay() or task.apply_async() to dispatch it
-    # todos: Return {"task_id": result.id, "status": "accepted"}
-    raise NotImplementedError("todos")
+
+
+    celery_app = Celery("worker", broker=settings.CELERY_BROKER_URL)
+    result = celery_app.send_task("generate_report")
+    return {"task_id":result.id, "status":"accepted"}
+
 
 
 # =============================================================================
@@ -564,42 +617,51 @@ async def generate_report_endpoint():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
-    # todos: Initialize the database engine and create tables if needed
-    # todos: Initialize the Redis connection pool via cache_service.connect()
-    # todos: Log that the application has started
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await cache_service.connect()
+    print("Application starting processes")
 
     yield
 
     # --- Shutdown ---
-    # todos: Dispose of the database engine (close connection pool)
-    # todos: Close the Redis connection via cache_service.close()
-    # todos: Log that the application is shutting down
+    await engine.dispose()
+    await cache_service.close()
+    print("Application shut down")
 
 
-# todos: Create the FastAPI app instance
 #   Pass: title, version, description, and the lifespan function above
 #   Docs: https://fastapi.tiangolo.com/tutorial/first-steps/
+
 app = FastAPI(
-    # todos: fill in app metadata and lifespan
+    title="Task Management API",
+    version="1.0.0",
+    description="Task management service",
+    lifespan=lifespan,
+)
+
+#   Docs: https://fastapi.tiangolo.com/tutorial/cors/
+# app.add_middleware(CORSMiddleware, ...)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-# todos: Add CORS middleware to allow cross-origin requests
-#   Docs: https://fastapi.tiangolo.com/tutorial/cors/
-# app.add_middleware(CORSMiddleware, ...)
-
-
-# todos: Include the tasks router with prefix "/api/v1/tasks" and tags=["tasks"]
 #   Docs: https://fastapi.tiangolo.com/tutorial/bigger-applications/
 # app.include_router(router, prefix="/api/v1/tasks", tags=["tasks"])
+app.include_router(router, prefix="/api/v1/tasks", tags=["tasks"])
 
 
 # todos: Set up Prometheus metrics
-#   setup_metrics(app)
+setup_metrics(app)
 
 
 @app.get("/")
 async def health_check():
     """Health check endpoint — used by Docker HEALTHCHECK and load balancers."""
-    # todos: Return a dict with status "ok" and any other useful info
-    raise NotImplementedError("todos")
+    return {"status": "ok"}

@@ -148,10 +148,8 @@ CONFIG = ProjectConfig()
 # Application code (api/app.py, worker/app.py, tests/, migrations/env.py) lives
 # in the templates/ directory as regular Python files you edit with full IDE
 # support.  Config values use << marker >> syntax (Jinja2 custom delimiters).
-#
-# To implement a todos: edit templates/api/app.py directly, then regenerate.
-# To change a config value: edit CONFIG above, then regenerate.
-#
+
+
 # Templates directory:
 #   templates/api/app.py            ← << postgres.user >>, << api.port >>, etc.
 #   templates/worker/app.py         ← << redis.celery_broker_url >>, etc.
@@ -270,9 +268,10 @@ def generate_api_requirements(c: ProjectConfig) -> str:
         prometheus-client==0.24.1  # https://pypi.org/project/prometheus-client/
 
         # Testing
-        pytest==9.0.2          # https://pypi.org/project/pytest/
-        pytest-asyncio==1.3.0  # https://pypi.org/project/pytest-asyncio/
+        pytest==8.3.5          # https://pypi.org/project/pytest/
+        pytest-asyncio==0.25.3 # https://pypi.org/project/pytest-asyncio/
         httpx==0.28.1          # https://pypi.org/project/httpx/
+        aiosqlite==0.21.0      # https://pypi.org/project/aiosqlite/
     """)
 
 
@@ -551,6 +550,7 @@ def generate_docker_compose_override(c: ProjectConfig) -> str:
           api:
             volumes:
               - ./api/app.py:/app/app.py
+              - ./tests:/app/tests
             command: ["uvicorn", "app:app", "--host", "{c.api.host}", "--port", "{c.api.port}", "--reload"]
             ports:
               - "{c.api.port}:{c.api.port}"
@@ -587,13 +587,11 @@ def generate_nginx_conf(c: ProjectConfig) -> str:
             include       /etc/nginx/mime.types;
             default_type  application/octet-stream;
 
-            # todos: Configure logging format and paths
-            #   access_log /var/log/nginx/access.log;
-            #   error_log  /var/log/nginx/error.log;
+            access_log /var/log/nginx/access.log;
+            error_log  /var/log/nginx/error.log;
 
-            # todos: Enable gzip compression
-            #   gzip on;
-            #   gzip_types text/plain application/json application/javascript text/css;
+            gzip on;
+            gzip_types text/plain application/json application/javascript text/css;
 
             sendfile    on;
             tcp_nopush  on;
@@ -621,25 +619,22 @@ def generate_nginx_default_conf(c: ProjectConfig) -> str:
         "    listen 80;\n"
         "    server_name _;\n"
         "\n"
-        "    # todos: Add security headers\n"
-        "    #   add_header X-Frame-Options DENY always;\n"
-        "    #   add_header X-Content-Type-Options nosniff always;\n"
-        '    #   add_header X-XSS-Protection "1; mode=block" always;\n'
-        "    #   add_header Referrer-Policy strict-origin-when-cross-origin always;\n"
+        "    add_header X-Frame-Options DENY always;\n"
+        "    add_header X-Content-Type-Options nosniff always;\n"
+        '    add_header X-XSS-Protection "1; mode=block" always;\n'
+        "    add_header Referrer-Policy strict-origin-when-cross-origin always;\n"
         "\n"
         "    location / {\n"
         "        proxy_pass http://api;\n"
-        "        # todos: Set proxy headers\n"
-        "        #   proxy_set_header Host $host;\n"
-        "        #   proxy_set_header X-Real-IP $remote_addr;\n"
-        "        #   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
-        "        #   proxy_set_header X-Forwarded-Proto $scheme;\n"
+        "        proxy_set_header Host $host;\n"
+        "        proxy_set_header X-Real-IP $remote_addr;\n"
+        "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n"
+        "        proxy_set_header X-Forwarded-Proto $scheme;\n"
         "    }\n"
         "\n"
-        "    # todos: Optional — expose /metrics for Prometheus\n"
-        "    # location /metrics {\n"
-        "    #     proxy_pass http://api/metrics;\n"
-        "    # }\n"
+        "    location /metrics {\n"
+        "        proxy_pass http://api/metrics;\n"
+        "    }\n"
         "}\n"
     )
 
@@ -1189,6 +1184,14 @@ def cmd_status() -> None:
     run_docker_compose("ps")
 
 
+def cmd_test() -> None:
+    """Generate files, rebuild API, and run pytest inside the container."""
+    write_generated_files(CONFIG)
+    run_docker_compose("up", "-d", "--build")
+    print("\n  [TEST] Running pytest inside the api container...\n")
+    run_docker_compose("exec", "api", "pytest", "tests/", "-v", '--override-ini=asyncio_mode=auto')
+
+
 def cmd_logs(service: str | None = None) -> None:
     """Follow logs from all services (or a specific one)."""
     args = ["logs", "-f"]
@@ -1211,6 +1214,7 @@ def main() -> None:
     sub.add_parser("clean", help="Stop services and remove ALL data volumes")
     sub.add_parser("build", help="Generate + build Docker images")
     sub.add_parser("status", help="Show container status")
+    sub.add_parser("test", help="Generate + rebuild + run pytest inside the api container")
 
     logs_parser = sub.add_parser("logs", help="Follow service logs")
     logs_parser.add_argument("service", nargs="?", default=None, help="Optional service name")
@@ -1225,6 +1229,7 @@ def main() -> None:
         "clean": cmd_clean,
         "build": cmd_build,
         "status": cmd_status,
+        "test": cmd_test,
     }
 
     if args.command == "logs":

@@ -17,7 +17,9 @@ import os
 from typing import Any
 
 from celery import Celery
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.orm import Session
 
 # =============================================================================
 # 1. CELERY CONFIGURATION
@@ -48,6 +50,7 @@ celery_app.conf.timezone = "UTC"
 
 # Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#basics
 # bind=True gives the task access to `self` for retries and state updates
+
 @celery_app.task(bind=True, name="generate_report")
 def generate_report(self, filters: dict | None = None) -> dict[str, Any]:
     """
@@ -57,15 +60,37 @@ def generate_report(self, filters: dict | None = None) -> dict[str, Any]:
     The API calls: generate_report.delay({"status": "done"})
     The worker picks it up and runs it in the background.
     """
-    # todos: Create a synchronous SQLAlchemy engine and session
-    #   (The worker uses sync SQLAlchemy, not async — see worker/requirements.txt)
-    #   Connection string: os.getenv("DATABASE_URL") or "<< postgres.sync_url >>"
-    # todos: Query the tasks table with the given filters
-    # todos: Build a report dict (e.g., total tasks, breakdown by status, by priority)
-    # todos: Return the report data
-    # todos: Handle exceptions — use self.retry() for transient failures
-    #   Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#retrying
-    raise NotImplementedError("todos")
+#   Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#retrying
+    try:
+        database_url = os.getenv("DATABASE_URL", "<< postgres.sync_url >>")
+        engine = create_engine(database_url)
+
+        with Session(engine) as session:
+            # Total count
+            total = session.execute(text("SELECT COUNT(*) FROM tasks")).scalar()
+
+            # Breakdown by status
+            status_rows = session.execute(
+                text("SELECT status, COUNT(*) FROM tasks GROUP BY status")
+            ).fetchall()
+            by_status = {row[0]: row[1] for row in status_rows}
+
+            # Breakdown by priority
+            priority_rows = session.execute(
+                text("SELECT priority, COUNT(*) FROM tasks GROUP BY priority")
+            ).fetchall()
+            by_priority = {row[0]: row[1] for row in priority_rows}
+
+        engine.dispose()
+
+        return {
+            "total_tasks": total,
+            "by_status": by_status,
+            "by_priority": by_priority,
+        }
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=5, max_retries=3)
+
 
 
 @celery_app.task(bind=True, name="bulk_status_update")
@@ -74,9 +99,20 @@ def bulk_status_update(self, task_ids: list[int], new_status: str) -> dict[str, 
     Update the status of multiple tasks at once.
     Returns the count of updated tasks.
     """
-    # todos: Create a synchronous SQLAlchemy session
-    # todos: Query for tasks with IDs in task_ids
-    # todos: Update each task's status to new_status
-    # todos: Commit and return {"updated_count": N}
-    # todos: Handle exceptions with self.retry()
-    raise NotImplementedError("todos")
+    try:
+        database_url = os.getenv("DATABASE_URL", "<< postgres.sync_url >>")
+        engine = create_engine(database_url)
+
+        with Session(engine) as session:
+            result: CursorResult = session.execute(  # type: ignore[assignment]
+                text("UPDATE tasks SET status = :status WHERE id = ANY(:ids)"),
+                {"status": new_status, "ids": task_ids},
+            )
+            session.commit()
+            updated_count = result.rowcount
+
+        engine.dispose()
+
+        return {"updated_count": updated_count}
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=5, max_retries=3)

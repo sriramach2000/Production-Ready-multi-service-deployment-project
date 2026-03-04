@@ -27,7 +27,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, AsyncGenerator, Optional, Sequence
+from typing import Any, AsyncGenerator, Optional
 
 import redis.asyncio as aioredis
 from celery import Celery
@@ -39,7 +39,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import String, Text, DateTime, Enum as SAEnum, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+from celery import Celery
 
 # =============================================================================
 # 1. CONFIGURATION
@@ -54,16 +56,14 @@ class Settings(BaseSettings):
 
     #   Use SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     #   Docs: https://docs.pydantic.dev/latest/concepts/pydantic_settings/#dotenv-env-support
-    model_config = SettingsConfigDict(
-        SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # --- Database ---
     POSTGRES_USER: str = "<< postgres.user >>"
     POSTGRES_PASSWORD: str = "<< postgres.password >>"
     POSTGRES_DB: str = "<< postgres.db >>"
     POSTGRES_HOST: str = "<< postgres.host >>"
-    POSTGRES_PORT: int = << postgres.port >>
+    POSTGRES_PORT: int = << postgres.port >> # These are just placeholders that orchastrate.py takes care of 
 
 
     #
@@ -83,7 +83,7 @@ class Settings(BaseSettings):
 
     # --- API ---
     API_HOST: str = "<< api.host >>"
-    API_PORT: int = 0
+    API_PORT: int = << api.port >> # These are just placeholders that orchastrate.py takes care of 
     DEBUG: bool = False
 
 
@@ -169,7 +169,7 @@ class Task(Base):
 
 
 #   Docs: https://docs.sqlalchemy.org/en/20/core/engines.html
-engine: AsyncEngine | None = create_async_engine(
+engine: AsyncEngine = create_async_engine(
     settings.DATABASE_URL, echo=False, pool_pre_ping=True 
 )  
 
@@ -221,7 +221,8 @@ class TaskBase(BaseModel):
 # Docs: https://fastapi.tiangolo.com/tutorial/body/
 class TaskCreate(TaskBase):
     """Only title is required; status and priority have defaults."""
-    pass  # todos: Override fields if needed (e.g., make status/priority optional with defaults)
+    # Override fields if needed (e.g., make status/priority optional with defaults)
+    pass  
 
 
 # --- Schema for updating a task (PATCH request body) ---
@@ -288,20 +289,20 @@ async def list_tasks(
     priority_filter: Optional[TaskPriority] = None,
     skip: int = 0,
     limit: int = 20,
-) -> Sequence[Task]:
-    
+) -> list[Task]:
+
     """Fetch tasks with optional filtering and pagination."""
     query= select(Task)
-   
+
     if status_filter is not None:
         query = query.where(Task.status == status_filter)
-   
+
     if priority_filter is not None:
         query = query.where(Task.priority == priority_filter)
-  
+
     query = query.order_by(Task.created_at.desc()).offset(skip).limit(limit)
     result = await session.execute(query)
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 async def count_tasks(
@@ -362,7 +363,7 @@ async def delete_task(session: AsyncSession, task_id: int) -> bool:
 # =============================================================================
 
 CACHE_PREFIX = "task"
-DEFAULT_TTL = 300  # 5 minutes in seconds
+DEFAULT_TTL = 300  #
 
 
 class CacheService:
@@ -373,49 +374,61 @@ class CacheService:
 
     async def connect(self) -> None:
         """Initialize the Redis connection. Call during app startup (lifespan)."""
-        # todos: Create a Redis connection using aioredis.from_url()
         #   Pass: settings.REDIS_URL, encoding="utf-8", decode_responses=True
         #   Docs: https://redis.readthedocs.io/en/stable/connections.html
-        pass
+
+        self.redis = await aioredis.from_url(
+            settings.REDIS_URL, encoding="utf-8", decode_responses = True 
+        
+        )
 
     async def close(self) -> None:
         """Close the Redis connection. Call during app shutdown (lifespan)."""
-        # todos: Close self.redis if it exists
         #   Use: await self.redis.close()
-        pass
+        if self.redis:
+            await self.redis.close()
+                
 
     def _make_key(self, task_id: int) -> str:
         """Build a cache key like 'task:123'."""
-        # todos: Return f"{CACHE_PREFIX}:{task_id}"
-        raise NotImplementedError("todos")
+
+        return f"{CACHE_PREFIX}:{task_id}"
 
     async def get_cached_task(self, task_id: int) -> Optional[dict]:
         """
         Try to get a task from Redis cache.
         Returns the task as a dict on cache hit, None on cache miss.
         """
-        # todos: Build the key with self._make_key(task_id)
-        # todos: Call await self.redis.get(key)
-        # todos: If result is None, return None (cache miss)
-        # todos: Deserialize the JSON string: json.loads(result)
-        # todos: Return the deserialized dict
         # Docs: https://redis.io/docs/latest/commands/get/
-        pass
+
+        key = self._make_key(task_id)
+        if not self.redis:
+            return None 
+        
+        result = await self.redis.get(key)
+        if result is None:
+            return None 
+        
+
+        return json.loads(result)
+    
+
 
     async def set_cached_task(self, task_id: int, task_data: dict, ttl: int = DEFAULT_TTL) -> None:
-        """Store a task in Redis cache with a TTL (time-to-live)."""
-        # todos: Build the key with self._make_key(task_id)
-        # todos: Serialize task_data to JSON: json.dumps(task_data)
-        # todos: Call await self.redis.setex(key, ttl, json_string)
         # Docs: https://redis.io/docs/latest/commands/setex/
-        pass
-
+        key = self._make_key(task_id)
+        json_string = json.dumps(task_data, default=str)
+        if not self.redis:
+            return None 
+        await self.redis.setex(key, ttl, json_string)
+    
     async def invalidate_task_cache(self, task_id: int) -> None:
         """Remove a task from Redis cache. Call after update or delete."""
-        # todos: Build the key with self._make_key(task_id)
-        # todos: Call await self.redis.delete(key)
         # Docs: https://redis.io/docs/latest/commands/del/
-        pass
+        key = self._make_key(task_id)
+        if not self.redis:
+            return None
+        await self.redis.delete(key)
 
 
 cache_service = CacheService()
@@ -426,20 +439,21 @@ cache_service = CacheService()
 # PHASE 7 | Docs: https://prometheus.github.io/client_python/
 # =============================================================================
 
-# todos: Create a Counter for total HTTP requests
-#   Name: "http_requests_total"
-#   Description: "Total number of HTTP requests"
-#   Labels: ["method", "endpoint", "status_code"]
 #   Docs: https://prometheus.github.io/client_python/instrumenting/counter/
-REQUEST_COUNT: Counter | None = None  # todos: Counter(...)
 
-# todos: Create a Histogram for request duration
-#   Name: "http_request_duration_seconds"
-#   Description: "HTTP request duration in seconds"
-#   Labels: ["method", "endpoint"]
+REQUEST_COUNT = Counter(
+    "http_requests_total",
+    "Total number of HTTP requests",
+    ["method", "endpoint", "status_code"],
+)
+
+
 #   Docs: https://prometheus.github.io/client_python/instrumenting/histogram/
-REQUEST_DURATION: Histogram | None = None  # todos: Histogram(...)
-
+REQUEST_DURATION = Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+    ["method", "endpoint"],
+)
 
 def setup_metrics(fastapi_app: FastAPI) -> None:
     """
@@ -449,21 +463,33 @@ def setup_metrics(fastapi_app: FastAPI) -> None:
 
     @fastapi_app.middleware("http")
     async def prometheus_middleware(request: Request, call_next) -> Response:
-        """Record request count and duration for every HTTP request."""
-        # todos: Record the start time using time.time()
-        # todos: Call response = await call_next(request)
-        # todos: Calculate duration = time.time() - start_time
-        # todos: Increment REQUEST_COUNT with labels (method, path, status_code)
-        # todos: Observe duration in REQUEST_DURATION with labels (method, path)
-        # todos: Return the response
-        # Docs: https://fastapi.tiangolo.com/tutorial/middleware/
-        raise NotImplementedError("todos")
 
-    # todos: Mount the Prometheus metrics ASGI app at /metrics
-    #   Use: metrics_app = make_asgi_app()
-    #   Then: fastapi_app.mount("/metrics", metrics_app)
+        """Record request count and duration for every HTTP request."""
+
+        # Docs: https://fastapi.tiangolo.com/tutorial/middleware/
+        
+        start_time = time.time()
+        response = await call_next(request)
+        duration = time.time() - start_time
+
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=request.url.path,
+            status_code=response.status_code,
+        ).inc()
+
+        REQUEST_DURATION.labels(
+            method=request.method,
+            endpoint=request.url.path,
+        ).observe(duration)
+
+        return response
+
+
     #   Docs: https://prometheus.github.io/client_python/exporting/http/
-    pass
+    metrics_app = make_asgi_app()
+    fastapi_app.mount("/metrics", metrics_app)
+
 
 
 # =============================================================================
@@ -479,33 +505,35 @@ router = APIRouter()
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=TaskResponse)
 
 async def create_task_endpoint(
-    
+
     task_data: TaskCreate,
     session: AsyncSession = Depends(get_session),
 
 ):
+    
     """Create a new task."""
-    # todos: Call create_task() with session and task_data
-    # todos: Return the created task
+    task = await create_task(session, task_data)
 
-    raise NotImplementedError("todos")
-
+    return task 
 
 # ---- LIST ----
 # Docs: https://fastapi.tiangolo.com/tutorial/query-params/
 @router.get("/", response_model=TaskListResponse)
 async def list_tasks_endpoint(
+
     status_filter: Optional[TaskStatus] = None,
     priority_filter: Optional[TaskPriority] = None,
     skip: int = 0,
     limit: int = 20,
     session: AsyncSession = Depends(get_session),
+
 ):
     """List tasks with optional filtering and pagination."""
-    # todos: Call list_tasks() with filters and pagination params
-    # todos: Call count_tasks() to get the total count
-    # todos: Return TaskListResponse with tasks list and total count
-    raise NotImplementedError("todos")
+
+    tasks = await list_tasks(session, status_filter, priority_filter, skip, limit)
+    total = await count_tasks(session, status_filter, priority_filter)
+
+    return TaskListResponse(tasks=[TaskResponse.model_validate(t) for t in tasks], total=total)
 
 
 # ---- GET SINGLE ----
@@ -516,15 +544,24 @@ async def get_task_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Get a single task by ID. Uses Redis cache (cache-aside pattern)."""
-    # todos: Check Redis cache first via cache_service.get_cached_task(task_id)
-    # todos: On cache hit — return the cached data
-    # todos: On cache miss — query DB via get_task()
-    # todos: If not found in DB — raise HTTPException(status_code=404)
-    # todos: Store result in cache via cache_service.set_cached_task()
-    # todos: Return the task
-    raise NotImplementedError("todos")
+    # 1. Check cache first
+    cached = await cache_service.get_cached_task(task_id)
+    if cached is not None:
+        return cached
+
+    # 2. Cache miss — hit DB
+    task = await get_task(session, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # 3. Store in cache for next time
+    task_response = TaskResponse.model_validate(task)
+    await cache_service.set_cached_task(task_id, task_response.model_dump(mode="json"))
+
+    return task
 
 
+    
 # ---- UPDATE ----
 # Docs: https://fastapi.tiangolo.com/tutorial/body-updates/
 @router.patch("/{task_id}", response_model=TaskResponse)
@@ -534,11 +571,11 @@ async def update_task_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Partially update a task."""
-    # todos: Call update_task() with session, task_id, task_data
-    # todos: If task not found — raise HTTPException(status_code=404)
-    # todos: Invalidate Redis cache via cache_service.invalidate_task_cache(task_id)
-    # todos: Return the updated task
-    raise NotImplementedError("todos")
+    task = await update_task(session, task_id, task_data)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await cache_service.invalidate_task_cache(task_id)
+    return task
 
 
 # ---- DELETE ----
@@ -548,11 +585,11 @@ async def delete_task_endpoint(
     session: AsyncSession = Depends(get_session),
 ):
     """Delete a task by ID."""
-    # todos: Call delete_task() with session and task_id
-    # todos: If task not found — raise HTTPException(status_code=404)
-    # todos: Invalidate Redis cache via cache_service.invalidate_task_cache(task_id)
-    # todos: Return None (204 No Content has no body)
-    raise NotImplementedError("todos")
+    deleted = await delete_task(session, task_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await cache_service.invalidate_task_cache(task_id)
+    return None
 
 
 # ---- TRIGGER ASYNC REPORT ----
@@ -560,10 +597,12 @@ async def delete_task_endpoint(
 @router.post("/report", status_code=status.HTTP_202_ACCEPTED)
 async def generate_report_endpoint():
     """Trigger an async report generation via Celery. Returns 202 Accepted."""
-    # todos: Import the Celery task from the worker (worker/app.py)
-    # todos: Call task.delay() or task.apply_async() to dispatch it
-    # todos: Return {"task_id": result.id, "status": "accepted"}
-    raise NotImplementedError("todos")
+
+
+    celery_app = Celery("worker", broker=settings.CELERY_BROKER_URL)
+    result = celery_app.send_task("generate_report")
+    return {"task_id":result.id, "status":"accepted"}
+
 
 
 # =============================================================================
@@ -575,42 +614,51 @@ async def generate_report_endpoint():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # --- Startup ---
-    # todos: Initialize the database engine and create tables if needed
-    # todos: Initialize the Redis connection pool via cache_service.connect()
-    # todos: Log that the application has started
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await cache_service.connect()
+    print("Application starting processes")
 
     yield
 
     # --- Shutdown ---
-    # todos: Dispose of the database engine (close connection pool)
-    # todos: Close the Redis connection via cache_service.close()
-    # todos: Log that the application is shutting down
+    await engine.dispose()
+    await cache_service.close()
+    print("Application shut down")
 
 
-# todos: Create the FastAPI app instance
 #   Pass: title, version, description, and the lifespan function above
 #   Docs: https://fastapi.tiangolo.com/tutorial/first-steps/
+
 app = FastAPI(
-    # todos: fill in app metadata and lifespan
+    title="Task Management API",
+    version="1.0.0",
+    description="Task management service",
+    lifespan=lifespan,
+)
+
+#   Docs: https://fastapi.tiangolo.com/tutorial/cors/
+# app.add_middleware(CORSMiddleware, ...)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-# todos: Add CORS middleware to allow cross-origin requests
-#   Docs: https://fastapi.tiangolo.com/tutorial/cors/
-# app.add_middleware(CORSMiddleware, ...)
-
-
-# todos: Include the tasks router with prefix "/api/v1/tasks" and tags=["tasks"]
 #   Docs: https://fastapi.tiangolo.com/tutorial/bigger-applications/
 # app.include_router(router, prefix="/api/v1/tasks", tags=["tasks"])
+app.include_router(router, prefix="/api/v1/tasks", tags=["tasks"])
 
 
 # todos: Set up Prometheus metrics
-#   setup_metrics(app)
+setup_metrics(app)
 
 
 @app.get("/")
 async def health_check():
     """Health check endpoint — used by Docker HEALTHCHECK and load balancers."""
-    # todos: Return a dict with status "ok" and any other useful info
-    raise NotImplementedError("todos")
+    return {"status": "ok"}
