@@ -38,3 +38,6 @@ htmlcov/
 # Docker volumes data (if accidentally created locally)
 postgres-data/
 redis-data/
+
+# Tests
+tests/
