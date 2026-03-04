@@ -47,3 +47,4 @@ services/nginx/
 
 templates/tests/test_tasks.py
 templates/tests/conftest.py
+templates/tests
