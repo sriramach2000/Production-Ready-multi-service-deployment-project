@@ -84,13 +84,15 @@ All config lives in `orchestrate.py` Section 1. Key values:
 
 | Method | Endpoint                       | Description                    |
 |--------|--------------------------------|--------------------------------|
-| POST   | `/tasks`                       | Create a task                  |
-| GET    | `/tasks`                       | List all tasks (cached)        |
-| GET    | `/tasks/{id}`                  | Get a task by ID               |
-| PUT    | `/tasks/{id}`                  | Update a task                  |
-| DELETE | `/tasks/{id}`                  | Delete a task                  |
-| POST   | `/tasks/{id}/generate_report`  | Trigger async report (Celery)  |
+| POST   | `/api/v1/tasks/`               | Create a task                  |
+| GET    | `/api/v1/tasks/`               | List all tasks (cached)        |
+| GET    | `/api/v1/tasks/{id}`           | Get a task by ID               |
+| PATCH  | `/api/v1/tasks/{id}`           | Update a task (partial)        |
+| DELETE | `/api/v1/tasks/{id}`           | Delete a task                  |
+| POST   | `/api/v1/tasks/report`         | Trigger async report (Celery)  |
+| GET    | `/`                            | Health check                   |
 | GET    | `/health`                      | Health check                   |
+| GET    | `/metrics`                     | Prometheus metrics             |
 
 ## Tech Stack
 
