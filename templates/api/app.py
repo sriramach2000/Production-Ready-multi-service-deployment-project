@@ -1,23 +1,17 @@
-# templates/api/app.py — FastAPI Task Management API (Single-File Application)
-# Config values use orchestrate.py markers and are filled in at generate time.
-# To modify application code: edit THIS file directly, then run: python3 orchestrate.py generate
-# To modify config defaults: edit CONFIG in orchestrate.py, then regenerate.
+# templates/api/app.py — FastAPI Task Management API
+# Config values use << marker >> syntax, filled in by orchestrate.py at generate time.
+# Edit THIS file, then run: python orchestrate.py generate
 #
-# Docs: https://fastapi.tiangolo.com/tutorial/first-steps/
+# Sections: 1.Configuration  2.Models  3.Session  4.Schemas  5.Services
+#           6.Cache  7.Metrics  8.Routes  9.App
 #
-# This file contains the entire API application, organized in sections:
-#   1. Configuration         — Settings loaded from environment / .env
-#   2. Database Models       — SQLAlchemy ORM (Base, enums, Task table)
-#   3. Database Session      — Async engine, session factory, get_session()
-#   4. Schemas               — Pydantic request/response validation
-#   5. Services              — Business logic (CRUD operations)
-#   6. Cache                 — Redis caching layer (cache-aside pattern)
-#   7. Metrics               — Prometheus instrumentation
-#   8. Routes                — API route handlers
-#   9. App                   — FastAPI instance, lifespan, middleware, health check
-#
-# Implementation phases are noted in each section header.
-# Work through the todoss top-to-bottom — each section only depends on sections above it.
+# References:
+#   FastAPI:      https://fastapi.tiangolo.com/
+#   SQLAlchemy:   https://docs.sqlalchemy.org/en/20/
+#   Pydantic:     https://docs.pydantic.dev/latest/
+#   Redis-py:     https://redis.io/docs/latest/develop/clients/redis-py/
+#   Celery:       https://docs.celeryq.dev/en/stable/
+#   Prometheus:   https://prometheus.github.io/client_python/
 
 
 import enum
@@ -39,56 +33,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import String, Text, DateTime, Enum as SAEnum, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
-from celery import Celery
+
 
 # =============================================================================
 # 1. CONFIGURATION
-# PHASE 1 | Docs: https://docs.pydantic.dev/latest/concepts/pydantic_settings/
 # =============================================================================
 
 class Settings(BaseSettings):
-    """
-    All app configuration is loaded from environment variables / .env file.
-    Docs: https://fastapi.tiangolo.com/advanced/settings/
-    """
-
-    #   Use SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-    #   Docs: https://docs.pydantic.dev/latest/concepts/pydantic_settings/#dotenv-env-support
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # --- Database ---
     POSTGRES_USER: str = "<< postgres.user >>"
     POSTGRES_PASSWORD: str = "<< postgres.password >>"
     POSTGRES_DB: str = "<< postgres.db >>"
     POSTGRES_HOST: str = "<< postgres.host >>"
-    POSTGRES_PORT: int = << postgres.port >> # These are just placeholders that orchastrate.py takes care of 
+    POSTGRES_PORT: int = << postgres.port >>
 
-
-    #
-    #   Format: "postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
-    #   For reference, the current config produces: << postgres.async_url >>
-    #   Docs: https://docs.pydantic.dev/latest/concepts/validators/
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
-    # --- Redis ---
     REDIS_URL: str = "<< redis.url >>"
-
-    # --- Celery ---
     CELERY_BROKER_URL: str = "<< redis.celery_broker_url >>"
     CELERY_RESULT_BACKEND: str = "<< redis.celery_result_backend >>"
 
-    # --- API ---
     API_HOST: str = "<< api.host >>"
-    API_PORT: int = << api.port >> # These are just placeholders that orchastrate.py takes care of 
+    API_PORT: int = << api.port >>
     DEBUG: bool = False
 
 
-# @lru_cache ensures settings are only loaded once
-#   Docs: https://fastapi.tiangolo.com/advanced/settings/#creating-the-settings-only-once-with-lru_cache
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
@@ -99,17 +71,12 @@ settings = get_settings()
 
 # =============================================================================
 # 2. DATABASE MODELS
-# PHASE 1 | Docs: https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html
 # =============================================================================
 
-# --- Base class for all models ---
-# Docs: https://docs.sqlalchemy.org/en/20/orm/mapping_styles.html
 class Base(DeclarativeBase):
     pass
 
 
-# --- Enums for task status and priority ---
-# Docs: https://docs.sqlalchemy.org/en/20/core/type_basics.html#sqlalchemy.types.Enum
 class TaskStatus(str, enum.Enum):
     todos = "todos"
     IN_PROGRESS = "in_progress"
@@ -123,40 +90,15 @@ class TaskPriority(str, enum.Enum):
 
 
 class Task(Base):
-    """Represents a task in the task management system."""
-
     __tablename__ = "tasks"
 
-    # Docs: https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html#using-mapped-column
-
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        autoincrement=True,
-    )
-
-    title: Mapped[str] = mapped_column(
-        String(255) , nullable=False,
-    )
-
-    description: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
-
-    status: Mapped[TaskStatus] = mapped_column(
-        SAEnum(TaskStatus) , default=TaskStatus.todos,
-    )
-
-    priority: Mapped[TaskPriority] = mapped_column(
-        SAEnum(TaskPriority) , default=TaskPriority.MEDIUM
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=func.now(),
-    )
-
-    updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, onupdate=func.now() , nullable=True,
-    )
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[TaskStatus] = mapped_column(SAEnum(TaskStatus), default=TaskStatus.todos)
+    priority: Mapped[TaskPriority] = mapped_column(SAEnum(TaskPriority), default=TaskPriority.MEDIUM)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, onupdate=func.now(), nullable=True)
 
     def __repr__(self) -> str:
         return f"Task(id={self.id}, title='{self.title}', status='{self.status.value}')"
@@ -164,124 +106,70 @@ class Task(Base):
 
 # =============================================================================
 # 3. DATABASE SESSION
-# PHASE 2 | Docs: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html
 # =============================================================================
 
+engine: AsyncEngine = create_async_engine(settings.DATABASE_URL, echo=False, pool_pre_ping=True)
 
-#   Docs: https://docs.sqlalchemy.org/en/20/core/engines.html
-engine: AsyncEngine = create_async_engine(
-    settings.DATABASE_URL, echo=False, pool_pre_ping=True 
-)  
-
-#   Docs: https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-asyncsession-with-a-sessionmaker
 async_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    FastAPI dependency that provides a database session per request.
-    Usage in routes: session: AsyncSession = Depends(get_session)
-    Docs: https://fastapi.tiangolo.com/tutorial/dependencies/
-    """
-
-    # Pattern:
-    #   async with async_session_factory() as session:
-    #       yield session
-    
     async with async_session_factory() as session:
         yield session
 
 
 # =============================================================================
-# 4. SCHEMAS (Pydantic Request/Response Validation)
-# PHASE 1 | Docs: https://docs.pydantic.dev/latest/concepts/models/
+# 4. SCHEMAS
 # =============================================================================
 
 class TaskBase(BaseModel):
-    title: str = Field(
-        #   Docs: https://docs.pydantic.dev/latest/concepts/fields/
-        min_length=1, max_length=255,
-    
-    )
-    description: Optional[str] = Field(
-        default=None
-    )
-    status: TaskStatus = Field(
-        default=TaskStatus.todos
-    )
-
-    priority: TaskPriority = Field(
-        default=TaskPriority.MEDIUM
-    )
+    title: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None)
+    status: TaskStatus = Field(default=TaskStatus.todos)
+    priority: TaskPriority = Field(default=TaskPriority.MEDIUM)
 
 
-# --- Schema for creating a task (POST request body) ---
-# Docs: https://fastapi.tiangolo.com/tutorial/body/
 class TaskCreate(TaskBase):
-    """Only title is required; status and priority have defaults."""
-    # Override fields if needed (e.g., make status/priority optional with defaults)
-    pass  
+    pass
 
 
-# --- Schema for updating a task (PATCH request body) ---
 class TaskUpdate(BaseModel):
-    """All fields optional — partial update pattern."""
-    title: Optional[str] = Field(
-        default=None, min_length=1 , max_length=255
-    )
-    description: Optional[str] = Field(
-        default=None
-    )
-    status: Optional[TaskStatus] = Field(
-        default=None
-    )
-    priority: Optional[TaskPriority] = Field(
-        default=None
-    )
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None)
+    status: Optional[TaskStatus] = Field(default=None)
+    priority: Optional[TaskPriority] = Field(default=None)
 
 
-# --- Schema for task responses (returned from API) ---
-# Docs: https://fastapi.tiangolo.com/tutorial/response-model/
 class TaskResponse(TaskBase):
-    """Includes database-generated fields: id, created_at, updated_at."""
-    #   Docs: https://docs.pydantic.dev/latest/concepts/models/#arbitrary-class-instances
-    model_config = ConfigDict(
-        from_attributes=True,
-    )
-
+    model_config = ConfigDict(from_attributes=True)
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
 
 
-# --- Schema for paginated list responses ---
 class TaskListResponse(BaseModel):
     tasks: list[TaskResponse]
     total: int
 
 
 # =============================================================================
-# 5. SERVICES (Business Logic — CRUD Operations)
-# PHASE 1 | Docs: https://docs.sqlalchemy.org/en/20/orm/session_basics.html
+# 5. SERVICES (CRUD)
 # =============================================================================
 
 async def create_task(session: AsyncSession, task_data: TaskCreate) -> Task:
-    """Insert a new task into the database and return it."""
-    
-    # Docs: https://docs.sqlalchemy.org/en/20/orm/session_basics.html#adding-new-or-existing-items
     task = Task(**task_data.model_dump())
     session.add(task)
     await session.commit()
     await session.refresh(task)
     return task
 
+
 async def get_task(session: AsyncSession, task_id: int) -> Optional[Task]:
-    """Fetch a single task by ID. Returns None if not found."""
-    # Docs: https://docs.sqlalchemy.org/en/20/orm/queryguide/select.html
     result = await session.execute(select(Task).where(Task.id == task_id))
     return result.scalar_one_or_none()
+
 
 async def list_tasks(
     session: AsyncSession,
@@ -290,16 +178,11 @@ async def list_tasks(
     skip: int = 0,
     limit: int = 20,
 ) -> list[Task]:
-
-    """Fetch tasks with optional filtering and pagination."""
-    query= select(Task)
-
+    query = select(Task)
     if status_filter is not None:
         query = query.where(Task.status == status_filter)
-
     if priority_filter is not None:
         query = query.where(Task.priority == priority_filter)
-
     query = query.order_by(Task.created_at.desc()).offset(skip).limit(limit)
     result = await session.execute(query)
     return list(result.scalars().all())
@@ -310,267 +193,148 @@ async def count_tasks(
     status_filter: Optional[TaskStatus] = None,
     priority_filter: Optional[TaskPriority] = None,
 ) -> int:
-    
-    """Count tasks matching filters (for pagination metadata)."""
     query = select(func.count()).select_from(Task)
-
     if status_filter is not None:
         query = query.where(Task.status == status_filter)
-
     if priority_filter is not None:
         query = query.where(Task.priority == priority_filter)
-    
     result = await session.execute(query)
     return result.scalar_one()
 
 
-async def update_task(
-    session: AsyncSession,
-    task_id: int,
-    task_data: TaskUpdate,
-) -> Optional[Task]:
-    """Update a task with partial data. Returns None if not found."""
+async def update_task(session: AsyncSession, task_id: int, task_data: TaskUpdate) -> Optional[Task]:
     task = await get_task(session, task_id)
-
     if task is None:
-        return None 
-    
+        return None
     for field, value in task_data.model_dump(exclude_unset=True).items():
         setattr(task, field, value)
-    
     await session.commit()
     await session.refresh(task)
-    
     return task
 
 
 async def delete_task(session: AsyncSession, task_id: int) -> bool:
-    """Delete a task by ID. Returns True if deleted, False if not found."""
-
-    task = await get_task(session,task_id)
-    
+    task = await get_task(session, task_id)
     if task is None:
         return False
-    
     await session.delete(task)
     await session.commit()
+    return True
 
-    return True 
 
 # =============================================================================
-# 6. CACHE (Redis Caching Layer)
-# PHASE 3 | Docs: https://redis.io/docs/latest/develop/clients/redis-py/
+# 6. CACHE (Redis — cache-aside pattern)
 # =============================================================================
 
 CACHE_PREFIX = "task"
-DEFAULT_TTL = 300  #
+DEFAULT_TTL = 300
 
 
 class CacheService:
-    """Manages Redis cache for tasks using the cache-aside pattern."""
-
     def __init__(self):
         self.redis: Optional[aioredis.Redis] = None
 
     async def connect(self) -> None:
-        """Initialize the Redis connection. Call during app startup (lifespan)."""
-        #   Pass: settings.REDIS_URL, encoding="utf-8", decode_responses=True
-        #   Docs: https://redis.readthedocs.io/en/stable/connections.html
-
-        self.redis = await aioredis.from_url(
-            settings.REDIS_URL, encoding="utf-8", decode_responses = True 
-        
-        )
+        self.redis = await aioredis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 
     async def close(self) -> None:
-        """Close the Redis connection. Call during app shutdown (lifespan)."""
-        #   Use: await self.redis.close()
         if self.redis:
             await self.redis.close()
-                
 
     def _make_key(self, task_id: int) -> str:
-        """Build a cache key like 'task:123'."""
-
         return f"{CACHE_PREFIX}:{task_id}"
 
     async def get_cached_task(self, task_id: int) -> Optional[dict]:
-        """
-        Try to get a task from Redis cache.
-        Returns the task as a dict on cache hit, None on cache miss.
-        """
-        # Docs: https://redis.io/docs/latest/commands/get/
-
-        key = self._make_key(task_id)
-        if not self.redis:
-            return None 
-        
-        result = await self.redis.get(key)
-        if result is None:
-            return None 
-        
-
-        return json.loads(result)
-    
-
-
-    async def set_cached_task(self, task_id: int, task_data: dict, ttl: int = DEFAULT_TTL) -> None:
-        # Docs: https://redis.io/docs/latest/commands/setex/
-        key = self._make_key(task_id)
-        json_string = json.dumps(task_data, default=str)
-        if not self.redis:
-            return None 
-        await self.redis.setex(key, ttl, json_string)
-    
-    async def invalidate_task_cache(self, task_id: int) -> None:
-        """Remove a task from Redis cache. Call after update or delete."""
-        # Docs: https://redis.io/docs/latest/commands/del/
-        key = self._make_key(task_id)
         if not self.redis:
             return None
-        await self.redis.delete(key)
+        result = await self.redis.get(self._make_key(task_id))
+        if result is None:
+            return None
+        return json.loads(result)
+
+    async def set_cached_task(self, task_id: int, task_data: dict, ttl: int = DEFAULT_TTL) -> None:
+        if not self.redis:
+            return
+        await self.redis.setex(self._make_key(task_id), ttl, json.dumps(task_data, default=str))
+
+    async def invalidate_task_cache(self, task_id: int) -> None:
+        if not self.redis:
+            return
+        await self.redis.delete(self._make_key(task_id))
 
 
 cache_service = CacheService()
 
 
 # =============================================================================
-# 7. METRICS (Prometheus Instrumentation)
-# PHASE 7 | Docs: https://prometheus.github.io/client_python/
+# 7. METRICS (Prometheus)
 # =============================================================================
 
-#   Docs: https://prometheus.github.io/client_python/instrumenting/counter/
-
 REQUEST_COUNT = Counter(
-    "http_requests_total",
-    "Total number of HTTP requests",
+    "http_requests_total", "Total number of HTTP requests",
     ["method", "endpoint", "status_code"],
 )
 
-
-#   Docs: https://prometheus.github.io/client_python/instrumenting/histogram/
 REQUEST_DURATION = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request duration in seconds",
+    "http_request_duration_seconds", "HTTP request duration in seconds",
     ["method", "endpoint"],
 )
 
-def setup_metrics(fastapi_app: FastAPI) -> None:
-    """
-    Attach Prometheus middleware and mount /metrics endpoint.
-    Called in the App section below after creating the app.
-    """
 
+def setup_metrics(fastapi_app: FastAPI) -> None:
     @fastapi_app.middleware("http")
     async def prometheus_middleware(request: Request, call_next) -> Response:
-
-        """Record request count and duration for every HTTP request."""
-
-        # Docs: https://fastapi.tiangolo.com/tutorial/middleware/
-        
         start_time = time.time()
         response = await call_next(request)
         duration = time.time() - start_time
-
-        REQUEST_COUNT.labels(
-            method=request.method,
-            endpoint=request.url.path,
-            status_code=response.status_code,
-        ).inc()
-
-        REQUEST_DURATION.labels(
-            method=request.method,
-            endpoint=request.url.path,
-        ).observe(duration)
-
+        REQUEST_COUNT.labels(method=request.method, endpoint=request.url.path, status_code=response.status_code).inc()
+        REQUEST_DURATION.labels(method=request.method, endpoint=request.url.path).observe(duration)
         return response
 
-
-    #   Docs: https://prometheus.github.io/client_python/exporting/http/
     metrics_app = make_asgi_app()
     fastapi_app.mount("/metrics", metrics_app)
 
 
-
 # =============================================================================
-# 8. ROUTES (API Route Handlers)
-# PHASE 1 | Docs: https://fastapi.tiangolo.com/tutorial/bigger-applications/
+# 8. ROUTES
 # =============================================================================
 
 router = APIRouter()
 
 
-# ---- CREATE ----
-# Docs: https://fastapi.tiangolo.com/tutorial/body/
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=TaskResponse)
+async def create_task_endpoint(task_data: TaskCreate, session: AsyncSession = Depends(get_session)):
+    return await create_task(session, task_data)
 
-async def create_task_endpoint(
 
-    task_data: TaskCreate,
-    session: AsyncSession = Depends(get_session),
-
-):
-    
-    """Create a new task."""
-    task = await create_task(session, task_data)
-
-    return task 
-
-# ---- LIST ----
-# Docs: https://fastapi.tiangolo.com/tutorial/query-params/
 @router.get("/", response_model=TaskListResponse)
 async def list_tasks_endpoint(
-
     status_filter: Optional[TaskStatus] = None,
     priority_filter: Optional[TaskPriority] = None,
     skip: int = 0,
     limit: int = 20,
     session: AsyncSession = Depends(get_session),
-
 ):
-    """List tasks with optional filtering and pagination."""
-
     tasks = await list_tasks(session, status_filter, priority_filter, skip, limit)
     total = await count_tasks(session, status_filter, priority_filter)
-
     return TaskListResponse(tasks=[TaskResponse.model_validate(t) for t in tasks], total=total)
 
 
-# ---- GET SINGLE ----
-# Docs: https://fastapi.tiangolo.com/tutorial/path-params/
 @router.get("/{task_id}", response_model=TaskResponse)
-async def get_task_endpoint(
-    task_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    """Get a single task by ID. Uses Redis cache (cache-aside pattern)."""
-    # 1. Check cache first
+async def get_task_endpoint(task_id: int, session: AsyncSession = Depends(get_session)):
     cached = await cache_service.get_cached_task(task_id)
     if cached is not None:
         return cached
-
-    # 2. Cache miss — hit DB
     task = await get_task(session, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-
-    # 3. Store in cache for next time
     task_response = TaskResponse.model_validate(task)
     await cache_service.set_cached_task(task_id, task_response.model_dump(mode="json"))
-
     return task
 
 
-    
-# ---- UPDATE ----
-# Docs: https://fastapi.tiangolo.com/tutorial/body-updates/
 @router.patch("/{task_id}", response_model=TaskResponse)
-async def update_task_endpoint(
-    task_id: int,
-    task_data: TaskUpdate,
-    session: AsyncSession = Depends(get_session),
-):
-    """Partially update a task."""
+async def update_task_endpoint(task_id: int, task_data: TaskUpdate, session: AsyncSession = Depends(get_session)):
     task = await update_task(session, task_id, task_data)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -578,13 +342,8 @@ async def update_task_endpoint(
     return task
 
 
-# ---- DELETE ----
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task_endpoint(
-    task_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    """Delete a task by ID."""
+async def delete_task_endpoint(task_id: int, session: AsyncSession = Depends(get_session)):
     deleted = await delete_task(session, task_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -592,73 +351,40 @@ async def delete_task_endpoint(
     return None
 
 
-# ---- TRIGGER ASYNC REPORT ----
-# Docs: https://docs.celeryq.dev/en/stable/userguide/calling.html
 @router.post("/report", status_code=status.HTTP_202_ACCEPTED)
 async def generate_report_endpoint():
-    """Trigger an async report generation via Celery. Returns 202 Accepted."""
-
-
     celery_app = Celery("worker", broker=settings.CELERY_BROKER_URL)
     result = celery_app.send_task("generate_report")
-    return {"task_id":result.id, "status":"accepted"}
-
+    return {"task_id": result.id, "status": "accepted"}
 
 
 # =============================================================================
-# 9. APP (FastAPI Instance, Lifespan, Middleware)
-# PHASE 1 | Docs: https://fastapi.tiangolo.com/tutorial/first-steps/
+# 9. APP
 # =============================================================================
 
-# Docs: https://fastapi.tiangolo.com/advanced/events/
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- Startup ---
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await cache_service.connect()
-    print("Application starting processes")
-
+    print("Application starting")
     yield
-
-    # --- Shutdown ---
     await engine.dispose()
     await cache_service.close()
     print("Application shut down")
 
 
-#   Pass: title, version, description, and the lifespan function above
-#   Docs: https://fastapi.tiangolo.com/tutorial/first-steps/
+app = FastAPI(title="Task Management API", version="1.0.0", description="Task management service", lifespan=lifespan)
 
-app = FastAPI(
-    title="Task Management API",
-    version="1.0.0",
-    description="Task management service",
-    lifespan=lifespan,
-)
-
-#   Docs: https://fastapi.tiangolo.com/tutorial/cors/
-# app.add_middleware(CORSMiddleware, ...)
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
-
-#   Docs: https://fastapi.tiangolo.com/tutorial/bigger-applications/
-# app.include_router(router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(router, prefix="/api/v1/tasks", tags=["tasks"])
 
-
-# todos: Set up Prometheus metrics
 setup_metrics(app)
 
 
 @app.get("/")
 async def health_check():
-    """Health check endpoint — used by Docker HEALTHCHECK and load balancers."""
     return {"status": "ok"}

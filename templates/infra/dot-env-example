@@ -1,0 +1,25 @@
+# Copy this file: cp .env.example .env
+# Then fill in real values. NEVER commit .env to git.
+
+# --- PostgreSQL ---
+POSTGRES_USER=<< pg_user >>
+POSTGRES_PASSWORD=changeme_use_a_strong_password
+POSTGRES_DB=<< pg_db >>
+POSTGRES_HOST=<< postgres_host >>
+POSTGRES_PORT=<< pg_port >>
+
+# --- Redis ---
+REDIS_URL=<< redis_url >>
+
+# --- Celery ---
+CELERY_BROKER_URL=<< celery_broker_url >>
+CELERY_RESULT_BACKEND=<< celery_result_backend >>
+
+# --- API ---
+API_HOST=<< api_host >>
+API_PORT=<< api_port >>
+DEBUG=false
+
+# --- Grafana ---
+GF_SECURITY_ADMIN_USER=<< grafana_admin_user >>
+GF_SECURITY_ADMIN_PASSWORD=changeme

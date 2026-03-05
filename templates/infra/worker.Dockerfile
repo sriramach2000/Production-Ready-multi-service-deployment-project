@@ -1,0 +1,16 @@
+# ---- Stage 1: Builder ----
+FROM python:<< python_version >>-slim AS builder
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ---- Stage 2: Production ----
+FROM python:<< python_version >>-slim
+RUN addgroup --system appgroup && adduser --system --group appuser
+WORKDIR /app
+COPY --from=builder /install /usr/local
+COPY ./app.py ./app.py
+USER appuser
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD celery -A app inspect ping || exit 1
+CMD ["celery", "-A", "app", "worker", "--loglevel=info"]

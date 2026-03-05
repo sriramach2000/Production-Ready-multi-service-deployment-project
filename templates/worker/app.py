@@ -1,17 +1,8 @@
-# templates/worker/app.py — Celery Background Worker (Single-File Application)
-# Config values use orchestrate.py markers and are filled in at generate time.
-# To modify application code: edit THIS file directly, then run: python3 orchestrate.py generate
-# To modify config defaults: edit CONFIG in orchestrate.py, then regenerate.
-#
-# Docs: https://docs.celeryq.dev/en/stable/getting-started/first-steps-with-celery.html
-#
-# This file contains the entire worker application:
-#   1. Celery Configuration  — App instance, broker/backend, serialization
-#   2. Task Definitions      — Background tasks dispatched from the API
+# templates/worker/app.py — Celery Background Worker
+# Config values use << marker >> syntax, filled in by orchestrate.py at generate time.
+# Edit THIS file, then run: python orchestrate.py generate
 #
 # The worker uses synchronous SQLAlchemy (not async) because Celery is process-based.
-# See worker/requirements.txt — psycopg2-binary instead of asyncpg.
-
 
 import os
 from typing import Any
@@ -21,22 +12,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
+
 # =============================================================================
 # 1. CELERY CONFIGURATION
-# PHASE 4 | Docs: https://docs.celeryq.dev/en/stable/getting-started/first-steps-with-celery.html
 # =============================================================================
 
-# Create the Celery app instance
-#   Docs: https://docs.celeryq.dev/en/stable/getting-started/first-steps-with-celery.html#application
 celery_app = Celery("worker")
-
-# Configure the broker and result backend
-#   Docs: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/redis.html
 celery_app.conf.broker_url = os.getenv("CELERY_BROKER_URL", "<< redis.celery_broker_url >>")
 celery_app.conf.result_backend = os.getenv("CELERY_RESULT_BACKEND", "<< redis.celery_result_backend >>")
-
-# Serialization settings
-#   Docs: https://docs.celeryq.dev/en/stable/userguide/configuration.html#serialization
 celery_app.conf.task_serializer = "json"
 celery_app.conf.result_serializer = "json"
 celery_app.conf.accept_content = ["json"]
@@ -45,66 +28,37 @@ celery_app.conf.timezone = "UTC"
 
 # =============================================================================
 # 2. TASK DEFINITIONS
-# PHASE 4 | Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html
 # =============================================================================
-
-# Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#basics
-# bind=True gives the task access to `self` for retries and state updates
 
 @celery_app.task(bind=True, name="generate_report")
 def generate_report(self, filters: dict | None = None) -> dict[str, Any]:
-    """
-    Generate a report of tasks matching the given filters.
-    This is a long-running operation dispatched from the API.
-
-    The API calls: generate_report.delay({"status": "done"})
-    The worker picks it up and runs it in the background.
-    """
-#   Docs: https://docs.celeryq.dev/en/stable/userguide/tasks.html#retrying
+    """Generate a report of tasks matching the given filters."""
     try:
         database_url = os.getenv("DATABASE_URL", "<< postgres.sync_url >>")
         engine = create_engine(database_url)
 
         with Session(engine) as session:
-            # Total count
             total = session.execute(text("SELECT COUNT(*) FROM tasks")).scalar()
-
-            # Breakdown by status
-            status_rows = session.execute(
-                text("SELECT status, COUNT(*) FROM tasks GROUP BY status")
-            ).fetchall()
+            status_rows = session.execute(text("SELECT status, COUNT(*) FROM tasks GROUP BY status")).fetchall()
             by_status = {row[0]: row[1] for row in status_rows}
-
-            # Breakdown by priority
-            priority_rows = session.execute(
-                text("SELECT priority, COUNT(*) FROM tasks GROUP BY priority")
-            ).fetchall()
+            priority_rows = session.execute(text("SELECT priority, COUNT(*) FROM tasks GROUP BY priority")).fetchall()
             by_priority = {row[0]: row[1] for row in priority_rows}
 
         engine.dispose()
-
-        return {
-            "total_tasks": total,
-            "by_status": by_status,
-            "by_priority": by_priority,
-        }
+        return {"total_tasks": total, "by_status": by_status, "by_priority": by_priority}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=5, max_retries=3)
 
 
-
 @celery_app.task(bind=True, name="bulk_status_update")
 def bulk_status_update(self, task_ids: list[int], new_status: str) -> dict[str, Any]:
-    """
-    Update the status of multiple tasks at once.
-    Returns the count of updated tasks.
-    """
+    """Update the status of multiple tasks at once."""
     try:
         database_url = os.getenv("DATABASE_URL", "<< postgres.sync_url >>")
         engine = create_engine(database_url)
 
         with Session(engine) as session:
-            result: CursorResult = session.execute(  # type: ignore[assignment]
+            result: CursorResult = session.execute(
                 text("UPDATE tasks SET status = :status WHERE id = ANY(:ids)"),
                 {"status": new_status, "ids": task_ids},
             )
@@ -112,7 +66,6 @@ def bulk_status_update(self, task_ids: list[int], new_status: str) -> dict[str, 
             updated_count = result.rowcount
 
         engine.dispose()
-
         return {"updated_count": updated_count}
     except Exception as exc:
         raise self.retry(exc=exc, countdown=5, max_retries=3)

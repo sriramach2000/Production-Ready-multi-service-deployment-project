@@ -1,0 +1,25 @@
+# Web framework
+fastapi==0.135.1
+uvicorn[standard]==0.41.0
+
+# Database
+sqlalchemy[asyncio]==2.0.48
+asyncpg==0.31.0
+
+# Caching
+redis==7.2.1
+
+# Task Queue (for dispatching to worker)
+celery==5.6.2
+
+# Configuration
+pydantic-settings==2.13.1
+
+# Monitoring
+prometheus-client==0.24.1
+
+# Testing
+pytest==8.3.5
+pytest-asyncio==0.25.3
+httpx==0.28.1
+aiosqlite==0.21.0
