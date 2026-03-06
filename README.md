@@ -1,6 +1,6 @@
 # Production-Ready Multi-Service Deployment
 
-A containerized task management API built with FastAPI, PostgreSQL, Redis, Celery, Nginx, Prometheus, and Grafana — all orchestrated from a single Python script.
+A containerized task management API built with FastAPI, PostgreSQL, Redis, Celery, Nginx, Prometheus, and Grafana. Clone it, configure `.env`, and run `make up`.
 
 ## Quick Start
 
@@ -8,69 +8,88 @@ A containerized task management API built with FastAPI, PostgreSQL, Redis, Celer
 # 1. Create your environment file
 cp .env.example .env
 
-# 2. Generate all project files
-python orchestrate.py generate
+# 2. Generate self-signed TLS certs (one-time)
+mkdir -p services/nginx/certs
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout services/nginx/certs/selfsigned.key \
+  -out services/nginx/certs/selfsigned.crt \
+  -subj "/C=US/ST=Dev/L=Local/O=TaskApp/CN=localhost"
 
 # 3. Start everything
-python orchestrate.py up
+make up
 
 # 4. Verify services are running
-python orchestrate.py status
+make status
 ```
 
 **Access the app:**
 
-| Service         | URL                       | Credentials     |
-|-----------------|---------------------------|-----------------|
-| API (via Nginx) | http://localhost          | —               |
-| API (direct)    | http://localhost:8000     | —               |
-| API Docs        | http://localhost:8000/docs| —               |
-| Grafana         | http://localhost:3000     | admin / changeme|
-| Prometheus      | http://localhost:9090     | —               |
+| Service    | URL                              | Credentials      |
+|------------|----------------------------------|-------------------|
+| API        | https://localhost/               | —                 |
+| API Docs   | https://localhost/docs           | —                 |
+| Grafana    | https://localhost/grafana/       | admin / changeme  |
+| Prometheus | http://localhost:9090            | —                 |
+| Metrics    | https://localhost/metrics        | —                 |
+
+> Your browser will warn about the self-signed certificate — accept it to proceed.
 
 ## Architecture
 
 ```
-Client -> Nginx (80) -> FastAPI (8000) -> PostgreSQL (5432)
-                              |                |
-                          Redis (6379) <- Celery Worker
-                              |
-                        Prometheus (9090) -> Grafana (3000)
+Client -> Nginx (443/SSL) -> FastAPI (8000) -> PostgreSQL (5432)
+                 |                  |
+                 |              Redis (6379) <- Celery Worker
+                 |
+                 +-> Grafana (3000)
+                 |
+           Prometheus (9090)
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+Nginx terminates TLS and reverse-proxies all traffic. Grafana is served at `/grafana/` behind HTTPS. HTTP on port 80 redirects to HTTPS.
 
 ## Prerequisites
 
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/)
-- Python 3.12+
-- `pip install jinja2`
 
 ## Commands
 
 ```bash
-python orchestrate.py generate    # Regenerate all files from config
-python orchestrate.py up          # Build and start all services
-python orchestrate.py down        # Stop all services (keeps data)
-python orchestrate.py restart     # Restart all services
-python orchestrate.py status      # Show service health
-python orchestrate.py logs        # View all logs
-python orchestrate.py logs api    # View logs for a specific service
-python orchestrate.py test        # Run tests inside the API container
-python orchestrate.py clean       # Stop and delete all data (destructive)
+make up        # Build and start all services
+make down      # Stop all services (keeps data)
+make restart   # Restart all services
+make status    # Show service health
+make logs      # View all logs
+make logs service=api   # View logs for a specific service
+make test      # Run tests inside the API container
+make clean     # Stop and delete all data (destructive)
 ```
 
-## Development Workflow
+## Project Structure
 
-This project uses a **single source of truth** pattern:
+```
+├── api/
+│   ├── app.py             # FastAPI application
+│   ├── Dockerfile
+│   └── requirements.txt
+├── worker/
+│   ├── app.py             # Celery worker
+│   ├── Dockerfile
+│   └── requirements.txt
+├── services/
+│   ├── nginx/nginx.conf   # Nginx reverse proxy (TLS)
+│   ├── prometheus/        # Prometheus config
+│   └── grafana/           # Grafana dashboards & provisioning
+├── tests/
+│   ├── conftest.py
+│   └── test_tasks.py
+├── docker-compose.yml
+├── Makefile
+├── .env.example
+└── .env                   # Your local config (gitignored)
+```
 
-1. **Edit application code** in `templates/` (e.g., `templates/api/app.py`)
-2. **Edit infrastructure** in `templates/infra/` (e.g., `templates/infra/docker-compose.yml`)
-3. **Edit config values** in `orchestrate.py` Section 1
-4. **Regenerate** with `python orchestrate.py generate`
-5. **Rebuild** with `python orchestrate.py up`
-
-> **Do not edit generated files directly** (`api/`, `worker/`, `services/`, `tests/`). Your changes will be overwritten on the next `generate`.
+Edit files directly — there is no code generation step.
 
 ## API Endpoints
 
@@ -85,10 +104,14 @@ This project uses a **single source of truth** pattern:
 | GET    | `/`                    | Health check                  |
 | GET    | `/metrics`             | Prometheus metrics            |
 
+## Configuration
+
+All config is read from `.env` at runtime via Pydantic `BaseSettings` (API) and `os.getenv()` (worker). See [.env.example](.env.example) for available variables.
+
 ## Tech Stack
 
 **Application:** FastAPI, SQLAlchemy 2.0 (async), Celery 5.6, Pydantic v2
 
-**Infrastructure:** Docker, Nginx 1.27, PostgreSQL 16, Redis 7
+**Infrastructure:** Docker, Nginx 1.27 (TLS), PostgreSQL 16, Redis 7
 
-**Monitoring:** Prometheus, Grafana
+**Monitoring:** Prometheus, Grafana (pre-provisioned dashboards)
