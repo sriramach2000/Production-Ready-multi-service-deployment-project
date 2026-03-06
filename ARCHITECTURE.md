@@ -1,17 +1,5 @@
 # Architecture
 
-## Design Principle
-
-**Single source of truth**: `orchestrate.py` holds one flat `Config` dataclass. All config values flow into Jinja2 templates using `<< marker >>` syntax, generating every file the stack needs.
-
-```
-orchestrate.py (Config + renderer + CLI)
-    |
-    +-- templates/api/app.py          -> api/app.py
-    +-- templates/worker/app.py       -> worker/app.py
-    +-- templates/tests/*             -> tests/*
-    +-- templates/infra/*             -> docker-compose.yml, Dockerfiles, nginx, prometheus, .env, etc.
-```
 
 ## Services (7 containers)
 
