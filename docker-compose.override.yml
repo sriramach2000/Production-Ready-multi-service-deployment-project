@@ -1,0 +1,18 @@
+services:
+  api:
+    volumes:
+      - ./api/app.py:/app/app.py
+      - ./tests:/app/tests
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

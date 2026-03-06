@@ -1,4 +1,4 @@
-# templates/tests/conftest.py — Shared Test Fixtures
+# tests/conftest.py — Shared Test Fixtures
 
 import pytest
 import pytest_asyncio

@@ -1,4 +1,4 @@
-# templates/tests/test_tasks.py — Tests for Task CRUD Endpoints
+# tests/test_tasks.py — Tests for Task CRUD Endpoints
 
 import pytest
 from httpx import AsyncClient

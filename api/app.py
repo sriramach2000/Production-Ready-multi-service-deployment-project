@@ -1,6 +1,4 @@
-# templates/api/app.py — FastAPI Task Management API
-# Config values use << marker >> syntax, filled in by orchestrate.py at generate time.
-# Edit THIS file, then run: python orchestrate.py generate
+# api/app.py — FastAPI Task Management API
 #
 # Sections: 1.Configuration  2.Models  3.Session  4.Schemas  5.Services
 #           6.Cache  7.Metrics  8.Routes  9.App
@@ -42,22 +40,22 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    POSTGRES_USER: str = "<< postgres.user >>"
-    POSTGRES_PASSWORD: str = "<< postgres.password >>"
-    POSTGRES_DB: str = "<< postgres.db >>"
-    POSTGRES_HOST: str = "<< postgres.host >>"
-    POSTGRES_PORT: int = << postgres.port >>
+    POSTGRES_USER: str = "taskapp"
+    POSTGRES_PASSWORD: str = "changeme_use_a_strong_password"
+    POSTGRES_DB: str = "taskdb"
+    POSTGRES_HOST: str = "postgres"
+    POSTGRES_PORT: int = 5432
 
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
-    REDIS_URL: str = "<< redis.url >>"
-    CELERY_BROKER_URL: str = "<< redis.celery_broker_url >>"
-    CELERY_RESULT_BACKEND: str = "<< redis.celery_result_backend >>"
+    REDIS_URL: str = "redis://redis:6379/0"
+    CELERY_BROKER_URL: str = "redis://redis:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://redis:6379/1"
 
-    API_HOST: str = "<< api.host >>"
-    API_PORT: int = << api.port >>
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
     DEBUG: bool = False
 
 

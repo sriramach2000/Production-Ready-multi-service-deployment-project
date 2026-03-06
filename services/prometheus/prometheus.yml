@@ -1,11 +1,11 @@
 global:
-  scrape_interval: << prometheus_scrape_interval >>
-  evaluation_interval: << prometheus_evaluation_interval >>
+  scrape_interval: 15s
+  evaluation_interval: 15s
 
 scrape_configs:
   - job_name: "fastapi"
     static_configs:
-      - targets: ["api:<< api_port >>"]
+      - targets: ["api:8000"]
     metrics_path: "/metrics"
 
   - job_name: "prometheus"

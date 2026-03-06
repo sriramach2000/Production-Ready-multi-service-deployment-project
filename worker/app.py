@@ -1,6 +1,4 @@
-# templates/worker/app.py — Celery Background Worker
-# Config values use << marker >> syntax, filled in by orchestrate.py at generate time.
-# Edit THIS file, then run: python orchestrate.py generate
+# worker/app.py — Celery Background Worker
 #
 # The worker uses synchronous SQLAlchemy (not async) because Celery is process-based.
 
@@ -18,8 +16,8 @@ from sqlalchemy.orm import Session
 # =============================================================================
 
 celery_app = Celery("worker")
-celery_app.conf.broker_url = os.getenv("CELERY_BROKER_URL", "<< redis.celery_broker_url >>")
-celery_app.conf.result_backend = os.getenv("CELERY_RESULT_BACKEND", "<< redis.celery_result_backend >>")
+celery_app.conf.broker_url = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+celery_app.conf.result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/1")
 celery_app.conf.task_serializer = "json"
 celery_app.conf.result_serializer = "json"
 celery_app.conf.accept_content = ["json"]
@@ -34,7 +32,7 @@ celery_app.conf.timezone = "UTC"
 def generate_report(self, filters: dict | None = None) -> dict[str, Any]:
     """Generate a report of tasks matching the given filters."""
     try:
-        database_url = os.getenv("DATABASE_URL", "<< postgres.sync_url >>")
+        database_url = os.getenv("DATABASE_URL", "postgresql://taskapp:changeme_use_a_strong_password@postgres:5432/taskdb")
         engine = create_engine(database_url)
 
         with Session(engine) as session:
@@ -54,7 +52,7 @@ def generate_report(self, filters: dict | None = None) -> dict[str, Any]:
 def bulk_status_update(self, task_ids: list[int], new_status: str) -> dict[str, Any]:
     """Update the status of multiple tasks at once."""
     try:
-        database_url = os.getenv("DATABASE_URL", "<< postgres.sync_url >>")
+        database_url = os.getenv("DATABASE_URL", "postgresql://taskapp:changeme_use_a_strong_password@postgres:5432/taskdb")
         engine = create_engine(database_url)
 
         with Session(engine) as session:
