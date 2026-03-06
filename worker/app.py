@@ -3,7 +3,7 @@
 # The worker uses synchronous SQLAlchemy (not async) because Celery is process-based.
 
 import os
-from typing import Any
+from typing import Any, cast
 
 from celery import Celery
 from sqlalchemy import create_engine, text
@@ -56,10 +56,10 @@ def bulk_status_update(self, task_ids: list[int], new_status: str) -> dict[str, 
         engine = create_engine(database_url)
 
         with Session(engine) as session:
-            result: CursorResult = session.execute(
+            result = cast(CursorResult[Any], session.execute(
                 text("UPDATE tasks SET status = :status WHERE id = ANY(:ids)"),
                 {"status": new_status, "ids": task_ids},
-            )
+            ))
             session.commit()
             updated_count = result.rowcount
 

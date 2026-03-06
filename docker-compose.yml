@@ -87,6 +87,23 @@ services:
       - app-network
     restart: unless-stopped
 
+  traffic-generator:
+    image: alpine/curl:latest
+    volumes:
+      - ./services/traffic-generator/seed.sh:/seed.sh:ro
+    entrypoint: ["/bin/sh", "/seed.sh"]
+    environment:
+      - API_URL=http://api:8000
+      - SEED_COUNT=10
+      - LOOP_DELAY=0.3
+      - LOOP_DURATION=0
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     env_file: .env
